@@ -62,11 +62,14 @@ npm test
 npm run build
 npx playwright install chromium
 npm run test:e2e
+npm run test:ui
 ```
 
 `npm test` runs URL/search tests and executes the actual migration in PGlite (PostgreSQL in WASM), testing save/search/delete, duplicates, schema validation, owner reassignment, anonymous denial, and two-user RLS isolation. The test emulates the `auth.uid()` boundary; it does **not** verify hosted Supabase authentication or the Data API.
 
 Browser checks cover responsive sign-in at 320, 390, 768, and 1440px, route protection, and failed authentication callbacks. Check real iOS Safari/Android hardware for the software keyboard, safe areas, touch feedback, and browser chrome; desktop emulation cannot establish those behaviors.
+
+`npm run test:ui` temporarily creates an ignored `/dev-qa` route to render the actual dashboard with test fixtures (Demo data / Worst case / Empty / One), then removes it. It checks all four widths, large text, dialogs and keyboard focus. This route is not committed or deployed; production `/library` only reads the authenticated cloud database. Start the dev server before running this test, or let Playwright start it. Do not run a production build concurrently with this temporary fixture test.
 
 For actual hosted Auth and direct API verification, create two dedicated, confirmed test accounts with passwords in a test project. Put `STASH_TEST_EMAIL_A`, `STASH_TEST_PASSWORD_A`, `STASH_TEST_EMAIL_B`, and `STASH_TEST_PASSWORD_B` in the ignored `.env.local`, then:
 

@@ -11,10 +11,16 @@ export async function proxy(request: NextRequest) {
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll(cookiesToSet, headers) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        cookiesToSet.forEach(({ name, value }) =>
+          request.cookies.set(name, value),
+        );
         response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
-        Object.entries(headers ?? {}).forEach(([key, value]) => response.headers.set(key, value));
+        cookiesToSet.forEach(({ name, value, options }) =>
+          response.cookies.set(name, value, options),
+        );
+        Object.entries(headers ?? {}).forEach(([key, value]) =>
+          response.headers.set(key, value),
+        );
         response.headers.set("Cache-Control", "private, no-store");
       },
     },
@@ -23,4 +29,6 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
-export const config = { matcher: ["/library/:path*", "/sign-in", "/auth/:path*"] };
+export const config = {
+  matcher: ["/library/:path*", "/sign-in", "/auth/:path*"],
+};

@@ -1,5 +1,6 @@
 export type Platform = "youtube" | "instagram" | "x" | "whatsapp" | "website";
-export type ProcessingStatus = "saved" | "pending" | "processing" | "ready" | "failed";
+export type ProcessingStatus =
+  "saved" | "pending" | "processing" | "ready" | "failed";
 
 export type SavedItem = {
   id: string;
