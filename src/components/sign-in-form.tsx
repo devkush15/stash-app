@@ -1,11 +1,9 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 import { api } from "@/lib/client-api";
 
 export function SignInForm({ configured }: { configured: boolean }) {
-  const router = useRouter();
   const [register, setRegister] = useState(false),
     [pending, setPending] = useState(false),
     [error, setError] = useState("");
@@ -32,8 +30,8 @@ export function SignInForm({ configured }: { configured: boolean }) {
                 password: form.get("password"),
               }),
             });
-            router.replace("/library");
-            router.refresh();
+            // Start a fresh document after changing the HTTP-only session.
+            window.location.replace("/library");
           } catch (error) {
             setError(
               error instanceof Error ? error.message : "Couldn’t sign in.",

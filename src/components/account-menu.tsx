@@ -4,10 +4,8 @@ import { useState, useTransition } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { ChevronDown, LogOut, UserRound } from "lucide-react";
 import { api } from "@/lib/client-api";
-import { useRouter } from "next/navigation";
 
 export function AccountMenu({ email }: { email: string }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
   return (
@@ -44,8 +42,7 @@ export function AccountMenu({ email }: { email: string }) {
                   startTransition(async () => {
                     try {
                       await api("/api/auth/logout", { method: "POST" });
-                      router.replace("/sign-in");
-                      router.refresh();
+                      window.location.replace("/sign-in");
                     } catch (error) {
                       setError(
                         error instanceof Error

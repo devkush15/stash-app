@@ -78,7 +78,14 @@ test("register, save, persist, search, isolate, delete, logout and login", async
   ]);
   expect((await check.request.get("/api/items")).status()).toBe(401);
   await check.close();
+  // Revisit a protected route while signed out before logging in again.
+  await page.goto("/library");
+  await expect(page).toHaveURL(/\/sign-in$/);
   await page.getByLabel("Username", { exact: true }).fill(username);
+  await page.getByLabel("Password", { exact: true }).fill("incorrect-password");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "incorrect" })).toBeVisible();
+  expect((await a.request.get("/api/items")).status()).toBe(401);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/\/library$/);
