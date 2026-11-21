@@ -27,7 +27,14 @@ export default async function Preview({
     processing_status: "saved",
     created_at: "2026-11-20T12:00:00Z",
     updated_at: "2026-11-20T12:00:00Z",
-    search_document: `${title || ""} ${url}`,
+    summary: null,
+    category: null,
+    tags: [],
+    source_text: null,
+    metadata_level: "none",
+    indexing_note: null,
+    processing_started_at: null,
+    ai_processed_at: null,
   });
   const demo = [
     base(1, "A useful reference", "https://example.com/reference", "website"),

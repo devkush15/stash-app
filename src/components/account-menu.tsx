@@ -3,9 +3,11 @@
 import { useState, useTransition } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { ChevronDown, LogOut, UserRound } from "lucide-react";
-import { signOut } from "@/app/actions/auth";
+import { api } from "@/lib/client-api";
+import { useRouter } from "next/navigation";
 
 export function AccountMenu({ email }: { email: string }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
   return (
@@ -40,8 +42,17 @@ export function AccountMenu({ email }: { email: string }) {
                 className="menu-item"
                 onClick={() =>
                   startTransition(async () => {
-                    const result = await signOut();
-                    if (result?.error) setError(result.error);
+                    try {
+                      await api("/api/auth/logout", { method: "POST" });
+                      router.replace("/sign-in");
+                      router.refresh();
+                    } catch (error) {
+                      setError(
+                        error instanceof Error
+                          ? error.message
+                          : "Couldn’t sign out.",
+                      );
+                    }
                   })
                 }
               >

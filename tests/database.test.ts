@@ -1,182 +1,110 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { PGlite } from "@electric-sql/pglite";
-import { beforeAll, afterAll, describe, expect, it } from "vitest";
-
-// Real Postgres execution in WASM: the auth schema below emulates only Supabase's
-// auth.uid() boundary. This verifies SQL/RLS, not hosted Auth or the Data API.
-const db = new PGlite();
-const alice = "11111111-1111-4111-8111-111111111111";
-const bob = "22222222-2222-4222-8222-222222222222";
-let aliceItem: string;
-
-async function asUser(id: string) {
-  await db.exec("reset role; set role authenticated;");
-  await db.query("select set_config('request.jwt.claim.sub', $1, false)", [id]);
-}
-async function insert(url: string, owner: string, title = "A useful article") {
-  return db.query<{ id: string }>(
-    "insert into public.saved_items (user_id, original_url, normalized_url, platform, title) values ($1, $2, $2, 'website', $3) returning id",
-    [owner, url, title],
-  );
-}
-
+import { createClient } from "@libsql/client";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, it, expect } from "vitest";
+import { Store } from "../src/lib/store";
+import { hashPassword, verifyPassword, tokenHash } from "../src/lib/passwords";
+const directory = mkdtempSync(join(tmpdir(), "stash-db-test-"));
+const url = `file:${join(directory, "test.db")}`;
+let client = createClient({ url }),
+  store = new Store(client);
+let alice: string, bob: string, itemId: string;
 beforeAll(async () => {
-  await db.exec(`create role anon; create role authenticated; create schema auth;
-    create table auth.users (id uuid primary key);
-    create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-    grant usage on schema auth, public to authenticated, anon;
-    insert into auth.users values ('${alice}'), ('${bob}');`);
-  for (const file of readdirSync("supabase/migrations")
-    .filter((f) => f.endsWith(".sql"))
-    .sort())
-    await db.exec(readFileSync(`supabase/migrations/${file}`, "utf8"));
+  alice = (await store.register("alice", "test-hash")).id;
+  bob = (await store.register("bob", "test-hash")).id;
 });
-afterAll(async () => {
-  await db.close();
+afterAll(() => {
+  client.close();
+  rmSync(directory, { recursive: true, force: true });
 });
-
-describe.sequential("Owner RLS and persisted schema", () => {
-  it("lets Alice save and read a real URL with saved status", async () => {
-    await asUser(alice);
-    const result = await insert("https://example.org/rls-test", alice);
-    aliceItem = result.rows[0].id;
-    const { rows } = await db.query<{ processing_status: string }>(
-      "select * from public.saved_items",
+describe.sequential("Private persistent SQLite libraries", () => {
+  it("prevents duplicate usernames regardless of case", async () => {
+    await expect(store.register("ALICE", "hash")).rejects.toThrow(/UNIQUE/);
+  });
+  it("stores URLs and rejects duplicates only within an account", async () => {
+    const link = {
+      original_url: "https://example.org/recipe",
+      normalized_url: "https://example.org/recipe",
+      platform: "website",
+    };
+    const item = await store.save(alice, link, "Pasta");
+    itemId = item.id;
+    await expect(store.save(alice, link, null)).rejects.toThrow(/UNIQUE/);
+    await expect(store.save(bob, link, null)).resolves.toBeDefined();
+  });
+  it("persists after closing and reopening the database", async () => {
+    client.close();
+    client = createClient({ url });
+    store = new Store(client);
+    expect((await store.get(alice, itemId))?.title).toBe("Pasta");
+  });
+  it("never reads, updates or deletes another user’s link by ID", async () => {
+    expect(await store.get(bob, itemId)).toBeNull();
+    expect(await store.update(bob, itemId, { title: "Stolen" })).toBeNull();
+    expect(await store.delete(bob, itemId)).toBe(false);
+    expect((await store.get(alice, itemId))?.title).toBe("Pasta");
+  });
+  it("stores AI metadata and prevents overlapping analysis", async () => {
+    expect(await store.claimIndex(alice, itemId)).not.toBeNull();
+    expect(await store.claimIndex(alice, itemId)).toBeNull();
+    await store.update(alice, itemId, {
+      summary: "A tomato pasta recipe.",
+      category: "Recipes",
+      tags: ["pasta", "cooking"],
+      processing_status: "ready",
+      ai_processed_at: new Date().toISOString(),
+    });
+    expect((await store.get(alice, itemId))?.tags).toEqual([
+      "pasta",
+      "cooking",
+    ]);
+    expect(await store.claimIndex(alice, itemId)).toBeNull();
+  });
+  it("verifies session expiry and server-side revocation", async () => {
+    await store.createSession(
+      alice,
+      tokenHash("secret"),
+      new Date(Date.now() + 60000).toISOString(),
     );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].processing_status).toBe("saved");
+    expect((await store.session(tokenHash("secret")))?.id).toBe(alice);
+    expect(await store.session("wrong")).toBeNull();
+    await store.logout(tokenHash("secret"));
+    expect(await store.session(tokenHash("secret"))).toBeNull();
+    await store.createSession(alice, "expired", "2000-01-01T00:00:00.000Z");
+    expect(await store.session("expired")).toBeNull();
   });
-  it("blocks inserts attributed to another user", async () => {
-    await asUser(alice);
-    await expect(insert("https://example.org/spoof", bob)).rejects.toThrow(
-      /row-level security/i,
+  it("enforces daily AI limits independently from keyword reads", async () => {
+    for (let i = 0; i < 5; i++)
+      expect(await store.aiQuota(alice, "save")).toBe(true);
+    expect(await store.aiQuota(alice, "save")).toBe(false);
+    expect((await store.list(alice)).length).toBe(1);
+    for (let i = 0; i < 20; i++)
+      expect(await store.aiQuota(alice, "search")).toBe(true);
+    expect(await store.aiQuota(alice, "search")).toBe(false);
+  });
+  it("enforces the shared AI ceiling atomically", async () => {
+    await client.execute(
+      "INSERT INTO usage_counts(name,bucket,count) VALUES('ai:global',?,50) ON CONFLICT(name,bucket) DO UPDATE SET count=50",
+      [new Date().toISOString().slice(0, 10)],
     );
+    expect(await store.aiQuota(bob, "search")).toBe(false);
   });
-  it("enforces owner-scoped duplicate prevention at database level", async () => {
-    await asUser(alice);
-    await expect(insert("https://example.org/rls-test", alice)).rejects.toThrow(
-      /unique constraint/i,
-    );
-    await asUser(bob);
-    await expect(
-      insert("https://example.org/rls-test", bob),
-    ).resolves.toBeDefined();
+  it("enforces basic persistent rate limiting", async () => {
+    expect(await store.limit("login-test", 1, 60000)).toBe(true);
+    expect(await store.limit("login-test", 1, 60000)).toBe(false);
   });
-  it("hides Alice's row from Bob including direct ID lookup", async () => {
-    await asUser(bob);
-    expect(
-      (
-        await db.query("select * from public.saved_items where id = $1", [
-          aliceItem,
-        ])
-      ).rows,
-    ).toEqual([]);
-    const own = await db.query<{ user_id: string }>(
-      "select user_id from public.saved_items",
-    );
-    expect(own.rows).toHaveLength(1);
-    expect(own.rows[0].user_id).toBe(bob);
+  it("deletes owned links persistently", async () => {
+    expect(await store.delete(alice, itemId)).toBe(true);
+    expect(await store.get(alice, itemId)).toBeNull();
   });
-  it("prevents Bob updating or deleting Alice's row", async () => {
-    await asUser(bob);
-    expect(
-      (
-        await db.query(
-          "update public.saved_items set title = 'Stolen' where id = $1 returning id",
-          [aliceItem],
-        )
-      ).rows,
-    ).toEqual([]);
-    expect(
-      (
-        await db.query(
-          "delete from public.saved_items where id = $1 returning id",
-          [aliceItem],
-        )
-      ).rows,
-    ).toEqual([]);
-  });
-  it("prevents owner reassignment via direct update", async () => {
-    await asUser(alice);
-    await expect(
-      db.query("update public.saved_items set user_id = $1 where id = $2", [
-        bob,
-        aliceItem,
-      ]),
-    ).rejects.toThrow(/row-level security/i);
-  });
-  it("searches generated title and URL text, respecting RLS", async () => {
-    await asUser(alice);
-    expect(
-      (
-        await db.query(
-          "select id from public.saved_items where search_document ilike '%useful%' ",
-        )
-      ).rows,
-    ).toHaveLength(1);
-    expect(
-      (
-        await db.query(
-          "select id from public.saved_items where search_document ilike '%rls-test%' ",
-        )
-      ).rows,
-    ).toHaveLength(1);
-    expect(
-      (
-        await db.query(
-          "select id from public.saved_items where search_document ilike '%missing%' ",
-        )
-      ).rows,
-    ).toHaveLength(0);
-  });
-  it("enforces URL, title, and processing state constraints", async () => {
-    await asUser(alice);
-    await expect(insert("javascript:alert(1)", alice)).rejects.toThrow(
-      /check constraint/,
-    );
-    await expect(
-      insert("https://example.org/long-title", alice, "x".repeat(201)),
-    ).rejects.toThrow(/check constraint/);
-    await expect(
-      db.query(
-        "update public.saved_items set processing_status = 'made_up' where id = $1",
-        [aliceItem],
-      ),
-    ).rejects.toThrow(/check constraint/);
-  });
-  it("updates owned items and generated search text", async () => {
-    await asUser(alice);
-    const result = await db.query<{ search_document: string }>(
-      "update public.saved_items set title = 'New title' where id = $1 returning search_document",
-      [aliceItem],
-    );
-    expect(result.rows[0].search_document).toContain("New title");
-  });
-  it("denies anonymous direct read/write access", async () => {
-    await db.exec("reset role; set role anon;");
-    await expect(db.query("select * from public.saved_items")).rejects.toThrow(
-      /permission denied/,
-    );
-    await expect(
-      insert("https://example.org/anonymous", alice),
-    ).rejects.toThrow(/permission denied/);
-  });
-  it("lets the owner delete and verifies deletion persists", async () => {
-    await asUser(alice);
-    expect(
-      (
-        await db.query(
-          "delete from public.saved_items where id = $1 returning id",
-          [aliceItem],
-        )
-      ).rows,
-    ).toHaveLength(1);
-    expect(
-      (
-        await db.query("select * from public.saved_items where id = $1", [
-          aliceItem,
-        ])
-      ).rows,
-    ).toEqual([]);
-  });
+});
+it("hashes passwords with independent salts and verifies securely", async () => {
+  const a = await hashPassword("a-strong-password"),
+    b = await hashPassword("a-strong-password");
+  expect(a).not.toBe(b);
+  expect(a).not.toContain("a-strong-password");
+  expect(await verifyPassword("a-strong-password", a)).toBe(true);
+  expect(await verifyPassword("wrong-password", a)).toBe(false);
+  expect(await verifyPassword("x", "invalid")).toBe(false);
 });

@@ -1,5 +1,78 @@
 @import "tailwindcss";
 
+.auth-switch {
+  display: block;
+  width: 100%;
+  margin-top: 1.5rem;
+  padding: 0.65rem;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.auth-form {
+  margin-top: 2rem;
+}
+.auth-form label:not(:first-child) {
+  margin-top: 0.6rem;
+}
+.card-summary {
+  font-size: 0.875rem;
+  color: var(--muted);
+  margin: 0.8rem 0 0;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-category {
+  font-size: 0.75rem;
+  color: var(--accent);
+  margin-top: 0.8rem;
+  overflow-wrap: anywhere;
+}
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.65rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.45rem;
+}
+.card-tags span {
+  overflow-wrap: anywhere;
+}
+.index-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+  padding: 0.8rem 1.15rem 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.analyze-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  padding: 0.35rem;
+}
+.search-mode {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  margin: -0.5rem 0 1.2rem;
+}
+.index-note {
+  font-size: 0.75rem;
+  color: var(--muted);
+  padding: 0 1.15rem;
+  margin: 0.4rem 0 0;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

@@ -8,13 +8,13 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-## Stash project workflow
+## Stash assignment prototype
 
-- Use this existing checkout and private repository: `https://github.com/devkush15/stash-app`. Production branch: `main`. Use feature branches for experimental work.
-- Retain Vercel project `stash-app` in scope `devanshi9`, project ID `prj_NMHYulCL3MBHi81k11YpjrIdBE3T`. Production URL: `https://stash-app-sigma.vercel.app`. Its Git connection automatically deploys pushes. Do not recreate the repository or project.
-- Use only Supabase project `dntblxbqggltyjorzziq` in organization `stash-app` (`lnnyjylpjrxikzpahebp`). Do not access or change xPloris projects. Remain on free infrastructure; no paid upgrades or paid AI integrations.
-- For each phase: implement, run relevant tests/lint/TypeScript/build, commit, push, inspect the resulting deployment until terminal status, then report the actual status and URL. Investigate failed deployments instead of claiming success.
-- Keep `.env.local`, tokens, API keys and passwords out of Git. Runtime uses only the Supabase publishable key and owner-based RLS. No service key belongs in the app or browser.
-- `npm run test:ui` creates and removes an ignored temporary fixture route. Never build or deploy while it is running. Production `/library` must use only real authenticated database data.
-- Keep the development server available while actively working when the environment supports it. Do not call email delivery or hosted flows verified without actually checking them.
-- Phase 1 intentionally has no extraction or AI. Preserve the original link on future processing failures. Public passwordless sign-ups require a verified SMTP sender; the free default sender has recipient and volume restrictions.
+- Preserve this checkout, private repository `https://github.com/devkush15/stash-app`, Vercel project `stash-app` / `prj_NMHYulCL3MBHi81k11YpjrIdBE3T` in `devanshi9`, and production URL `https://stash-app-sigma.vercel.app`.
+- The current user explicitly simplified the app: Next.js API routes, username/password accounts, HTTP-only sessions, Turso/libSQL persistence and one free-tier Gemini REST integration. No Supabase, Firebase or Cloudflare integration is required. Do not modify their old remote resources.
+- Build only the essential Login/Register and Library/Search experience. No separate backend, workers, Redis, vectors, payments, subscriptions, analytics or extra dashboards.
+- Runtime credentials are server-only. Never commit `.env.local`, tokens, passwords or API keys. Never enable paid services or billing.
+- Parameterize SQL and scope all item reads/writes/search to the session's user ID. Hash passwords with scrypt and store only hashes of opaque session tokens. Vercel must use hosted persistence; local file databases are for development/tests only.
+- Verify real AI against the provider before claiming it works. Preserve links and public metadata when extraction or AI fails; never fabricate summaries. Restricted social platforms may have limited indexing.
+- For each phase: implement → lint/typecheck/tests/build → commit/push → verify the existing automatic Vercel deployment → report status and URL. Use feature branches for experiments and main for checked work.
+- Keep the local development preview running while working. Test fixtures remain development-only and must not be deployed. Do not run a production build while `npm run test:ui` has its temporary route present.

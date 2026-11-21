@@ -1,88 +1,77 @@
 "use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { LoaderCircle } from "lucide-react";
+import { api } from "@/lib/client-api";
 
-import { useActionState, useState } from "react";
-import { Mail, Check, LoaderCircle } from "lucide-react";
-import { requestSignIn } from "@/app/actions/auth";
-import type { AuthResult } from "@/lib/action-state";
-
-export function SignInForm({
-  configured,
-  expired,
-}: {
-  configured: boolean;
-  expired: boolean;
-}) {
-  const [state, action, pending] = useActionState<AuthResult, FormData>(
-    requestSignIn,
-    {},
-  );
-  const [changeEmail, setChangeEmail] = useState(false);
-  const [email, setEmail] = useState("");
-  if (state.sent && !changeEmail)
-    return (
-      <div className="email-sent">
-        <span className="sent-icon">
-          <Check size={24} aria-hidden="true" />
-        </span>
-        <h1>Check your inbox.</h1>
-        <p role="status">
-          Your sign-in link is on its way to <strong>{state.email}</strong>.
-        </p>
-        <p className="muted">
-          Open it to get started. Check spam if it doesn’t arrive.
-        </p>
-        <button
-          className="button button-secondary w-full"
-          onClick={() => setChangeEmail(true)}
-        >
-          Use a different email
-        </button>
-      </div>
-    );
+export function SignInForm({ configured }: { configured: boolean }) {
+  const router = useRouter();
+  const [register, setRegister] = useState(false),
+    [pending, setPending] = useState(false),
+    [error, setError] = useState("");
   return (
     <>
-      <h1>
-        Your good finds.
-        <br />
-        <span className="muted-heading">All together.</span>
-      </h1>
-      <p className="auth-intro">Save anything. Find everything.</p>
+      <h1>{register ? "Create an account." : "Welcome back."}</h1>
       {!configured && (
-        <div className="notice" role="status">
-          Stash is being set up. Sign-in will be available once the database is
-          connected.
-        </div>
-      )}
-      {expired && !state.error && (
-        <p className="error-message" role="alert">
-          This sign-in link has expired. Request a new one below.
+        <p className="notice" role="status">
+          Database setup is required before you can sign in.
         </p>
       )}
       <form
-        action={action}
         className="auth-form"
-        onSubmit={() => setChangeEmail(false)}
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
+          setError("");
+          setPending(true);
+          try {
+            await api(`/api/auth/${register ? "register" : "login"}`, {
+              method: "POST",
+              body: JSON.stringify({
+                username: form.get("username"),
+                password: form.get("password"),
+              }),
+            });
+            router.replace("/library");
+            router.refresh();
+          } catch (error) {
+            setError(
+              error instanceof Error ? error.message : "Couldn’t sign in.",
+            );
+            setPending(false);
+          }
+        }}
       >
-        <label htmlFor="email">Email address</label>
+        <label htmlFor="username">Username</label>
         <input
           className="input"
-          id="email"
-          name="email"
-          type="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          autoComplete="email"
+          id="username"
+          name="username"
+          required
+          minLength={3}
+          maxLength={30}
+          pattern="[a-zA-Z0-9_.\-]+"
+          autoComplete="username"
           autoCapitalize="none"
           spellCheck={false}
-          placeholder="you@example.com"
-          required
-          maxLength={254}
           disabled={pending || !configured}
-          aria-describedby={state.error ? "auth-error" : undefined}
         />
-        {state.error && (
+        <label htmlFor="password">Password</label>
+        <input
+          className="input"
+          id="password"
+          name="password"
+          type="password"
+          required
+          minLength={8}
+          maxLength={128}
+          autoComplete={register ? "new-password" : "current-password"}
+          disabled={pending || !configured}
+          aria-describedby={error ? "auth-error" : undefined}
+        />
+        {error && (
           <p className="error-message" id="auth-error" role="alert">
-            {state.error}
+            {error}
           </p>
         )}
         <button
@@ -90,19 +79,24 @@ export function SignInForm({
           disabled={pending || !configured}
           type="submit"
         >
-          {pending ? (
+          {pending && (
             <LoaderCircle className="spinner" size={17} aria-hidden="true" />
-          ) : (
-            <Mail size={17} aria-hidden="true" />
           )}
-          {pending ? "Sending link…" : "Continue with email"}
+          {pending ? "Please wait…" : register ? "Create account" : "Sign in"}
         </button>
       </form>
-      <p className="auth-note">
-        New here? Your account is created automatically.
-        <br />
-        No password to remember.
-      </p>
+      <button
+        className="auth-switch"
+        disabled={pending}
+        onClick={() => {
+          setRegister(!register);
+          setError("");
+        }}
+      >
+        {register
+          ? "Already have an account? Sign in"
+          : "New here? Create an account"}
+      </button>
     </>
   );
 }

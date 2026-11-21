@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  distDir: process.env.STASH_TEST_SERVER === "true" ? ".next-e2e" : ".next",
   poweredByHeader: false,
   async headers() {
     return [

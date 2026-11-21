@@ -1,5 +1,6 @@
 node_modules/
 .next/
+.next-e2e/
 out/
 .env*
 !.env.example
@@ -9,8 +10,11 @@ test-results/
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
-supabase/.temp/
-supabase/.branches/
 .vercel/
 .playwright-mcp/
 src/app/dev-qa/
+
+.data/
+*.db
+*.db-shm
+*.db-wal

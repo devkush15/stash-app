@@ -3,8 +3,9 @@
 import { useRef, useState, useTransition } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Link2, LoaderCircle, X } from "lucide-react";
-import { saveLink } from "@/app/actions/items";
-import { MAX_URL_LENGTH, MAX_TITLE_LENGTH } from "@/lib/links";
+import { api } from "@/lib/client-api";
+import type { SavedItem } from "@/lib/database.types";
+import { MAX_URL_LENGTH, MAX_TITLE_LENGTH, parseLink } from "@/lib/links";
 
 export function LinkDialog({
   open,
@@ -13,7 +14,7 @@ export function LinkDialog({
 }: {
   open: boolean;
   onOpenChange: (value: boolean) => void;
-  onSaved: () => void;
+  onSaved: (item: SavedItem) => void;
 }) {
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
@@ -64,16 +65,27 @@ export function LinkDialog({
                 startTransition(async () => {
                   setError("");
                   try {
-                    const result = await saveLink(form);
-                    if (result.error) setError(result.error);
-                    else {
+                    parseLink(form.get("url"));
+                    const result = await api<{ item: SavedItem }>(
+                      "/api/items",
+                      {
+                        method: "POST",
+                        body: JSON.stringify({
+                          url: form.get("url"),
+                          title: form.get("title"),
+                        }),
+                      },
+                    );
+                    {
                       formRef.current?.reset();
                       onOpenChange(false);
-                      onSaved();
+                      onSaved(result.item);
                     }
-                  } catch {
+                  } catch (error) {
                     setError(
-                      "Couldn’t save this link. Check your connection and try again.",
+                      error instanceof Error
+                        ? error.message
+                        : "Couldn’t save this link.",
                     );
                   }
                 });

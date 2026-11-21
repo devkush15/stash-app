@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { ExternalLink, Trash2, LoaderCircle } from "lucide-react";
-import { deleteLink } from "@/app/actions/items";
+import { api } from "@/lib/client-api";
 import { SourceIcon } from "./source-icon";
 import { displayUrl, linkTitle, sources } from "@/lib/links";
 import type { SavedItem } from "@/lib/database.types";
@@ -11,9 +11,13 @@ import type { SavedItem } from "@/lib/database.types";
 export function SavedLink({
   item,
   onDeleted,
+  onAnalyze,
+  analyzing = false,
 }: {
   item: SavedItem;
   onDeleted: () => void;
+  onAnalyze?: (id: string) => void;
+  analyzing?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
@@ -54,7 +58,55 @@ export function SavedLink({
         <p className="card-url" title={item.original_url} dir="auto">
           {displayUrl(item.original_url)}
         </p>
+        {item.summary && <p className="card-summary">{item.summary}</p>}
+        {item.category && (
+          <span className="card-category">{item.category}</span>
+        )}
+        {item.tags.length > 0 && (
+          <div className="card-tags">
+            {item.tags.map((tag) => (
+              <span key={tag}>#{tag}</span>
+            ))}
+          </div>
+        )}
       </a>
+      {item.processing_status !== "ready" && (
+        <div className="index-status">
+          <span title={item.indexing_note || undefined}>
+            {analyzing
+              ? "Analyzing…"
+              : item.processing_status === "limited"
+                ? "Limited indexing"
+                : item.processing_status === "pending"
+                  ? "Ready to analyze"
+                  : item.processing_status === "deferred"
+                    ? "Link saved · AI deferred"
+                    : item.processing_status === "failed"
+                      ? "Analysis unavailable"
+                      : "Link saved"}
+          </span>
+          {!item.ai_processed_at && onAnalyze && (
+            <button
+              className="analyze-button"
+              disabled={analyzing}
+              onClick={() => onAnalyze(item.id)}
+            >
+              {analyzing ? (
+                <LoaderCircle
+                  className="spinner"
+                  size={14}
+                  aria-label="Analyzing"
+                />
+              ) : (
+                "Analyze"
+              )}
+            </button>
+          )}
+        </div>
+      )}
+      {item.processing_status === "limited" && item.indexing_note && (
+        <p className="index-note">{item.indexing_note}</p>
+      )}
       <div className="card-footer">
         <span className="card-saved">
           Saved{" "}
@@ -112,15 +164,18 @@ export function SavedLink({
                     onClick={() =>
                       startTransition(async () => {
                         try {
-                          const result = await deleteLink(item.id);
-                          if (result.error) setError(result.error);
-                          else {
+                          await api(`/api/items/${item.id}`, {
+                            method: "DELETE",
+                          });
+                          {
                             setOpen(false);
                             onDeleted();
                           }
-                        } catch {
+                        } catch (error) {
                           setError(
-                            "Couldn’t delete this link. Check your connection and try again.",
+                            error instanceof Error
+                              ? error.message
+                              : "Couldn’t delete this link.",
                           );
                         }
                       })

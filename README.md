@@ -1,68 +1,83 @@
 # stash.
 
-A private library for the links you want to keep. Phase 1 uses Next.js App Router, TypeScript, Tailwind CSS, and Supabase Auth/PostgreSQL. There is no AI integration, extraction, billing, localStorage content database, or production sample data.
+A small working assignment prototype: register → save a link → AI organizes accessible content → search → open the original.
 
-Production: https://stash-app-sigma.vercel.app · Private source: https://github.com/devkush15/stash-app
+- Existing private repository: https://github.com/devkush15/stash-app
+- Existing Vercel project: `stash-app`, scope `devanshi9`
+- Production URL: https://stash-app-sigma.vercel.app
 
-The cloud project is `stash-app` (`dntblxbqggltyjorzziq`) in the separate `stash-app` organization, Mumbai region. The migration, RLS, production redirect allowlist, and Vercel environment variables are configured. Existing unrelated projects were not changed. The current checkout already has its ignored `.env.local`; preserve it.
+## Small architecture
 
-## Run locally
+Next.js App Router, TypeScript, Tailwind, four SQLite tables (`users`, `sessions`, `saved_items`, `usage_counts`), and one Gemini REST integration. Backend operations use Next.js API routes. No external authentication provider, SMTP, separate server, queue, worker, vector database, payment system, or analytics service is required.
 
-Use Node.js 24 LTS and npm.
+Passwords use salted scrypt (N=131072, r=8, p=1). Sessions are random opaque tokens in HTTP-only, SameSite=Lax cookies, Secure in production. Only token hashes are stored in SQLite. Sessions expire after 30 days and are revoked server-side at logout. Every link lookup, update, deletion, and search is scoped to the current user's ID with parameterized SQL.
+
+## Run
+
+Use Node.js 24 and npm:
 
 ```sh
 npm ci
-# Fresh clones only: copy .env.example to .env.local and fill in the variables.
+# For a fresh clone, copy .env.example to .env.local.
+# Preserve an existing .env.local.
 npm run dev
 ```
 
-Open http://localhost:3000. The server binds to `0.0.0.0` for phone testing on your local network. Hot reload is enabled. Without Supabase configuration the sign-in page honestly shows a setup notice; it does not simulate authentication or saved links.
+Open http://localhost:3000. In local development, without Turso credentials, the app uses the real persistent SQLite database `.data/stash.db`. This file is ignored by Git. Vercel explicitly rejects missing hosted database credentials and never uses a local file for persistence.
 
-| Variable | Value |
-| --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project API URL |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Project publishable key (`sb_publishable_…`) |
-| `APP_URL` | Canonical app origin, e.g. `http://localhost:3000` locally, your HTTPS production origin on Vercel |
+## Hosted database: Turso Free
 
-Only the publishable key belongs in public configuration. The app does not need a service-role key, secret API key, or database password. Never commit `.env.local`; it is ignored. Vercel CLI may add a local OIDC token to that ignored file. Never print or commit it.
+1. Sign in at https://app.turso.tech and keep the Free plan (no credit card is required).
+2. Create one **libSQL** database named `stash-app`. Use a region near your evaluators.
+3. Copy its database URL (`libsql://…`) and create a database authentication token.
+4. Put these **server-only** values in the ignored `.env.local` and in the existing Vercel project's environment variables:
 
-## Supabase setup
-
-These steps describe reproducible setup. The current Stash project already has steps 1–5 configured; do not recreate it or re-run its initial migration.
-
-1. For a fresh installation, create a **new** free-plan project named `stash-app` in the intended organization. Do not use another app's database. Choose a region near your users.
-2. In the SQL Editor run the version-controlled file `supabase/migrations/20261121194730_saved_items.sql`. For a CLI-managed project, use the installed CLI's help for `link` and migration application; pin the CLI version used by your team. The initial files were generated with CLI 3.2.0.
-3. Copy the API URL and **publishable** key from the project's Connect/API settings into `.env.local` and Vercel environment settings.
-4. Enable the Email provider and allow new sign-ups in Authentication. This application uses a single passwordless email flow for sign-up and sign-in.
-5. Under Authentication → URL Configuration, set **Site URL** to the production `APP_URL`. Add exact Redirect URLs for `http://localhost:3000/auth/callback`, your production `/auth/callback`, and production `/auth/confirm`. Add only trusted preview origins when testing preview authentication.
-6. The default magic-link template works with the PKCE `/auth/callback` route in the browser that requested the link. Open each requested link in that same browser. Each device can sign in separately and use the same synced library. Supabase currently rejects template customization on free projects using its default email sender. Once a verified custom SMTP provider is configured, optionally use `supabase/templates/sign-in.html` for both **Confirm signup** and **Magic Link**, with this target:
-
-   ```html
-   <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&amp;type=email">Sign in to Stash</a>
+   ```dotenv
+   TURSO_DATABASE_URL=libsql://your-database-host
+   TURSO_AUTH_TOKEN=your-database-token
    ```
 
-   The app sets `RedirectTo` from its configured `APP_URL`. The callback supports both default PKCE codes and email token hashes, and always redirects to `/library`. `/auth/confirm` also accepts email token hashes. Redirects keep the browser's actual host so session cookies are preserved behind proxies and local bind addresses.
-7. Before inviting public users, configure a verified custom SMTP sender. Supabase's default sender restricts recipients and volume; a production email sign-in page alone does not remove that restriction. Review current Auth email rate limits and enable CAPTCHA if needed for public sign-up abuse. Do not assume free email capacity is unlimited.
-8. Restart the dev server after changing environment variables. Redeploy Vercel after changing production variables.
+5. Run `npm run db:setup`, or let the app create its small idempotent schema on its first database request. Both paths use the same schema in `src/lib/schema.ts`.
+6. Redeploy Vercel after changing environment variables. Do not create another Vercel project or GitHub repository.
 
-The migration explicitly grants table access only to authenticated users, enables and forces RLS, applies separate owner policies to all four operations, checks ownership during updates, and enforces `(user_id, normalized_url)` uniqueness. Deleted users cascade to their items. `updated_at` is maintained by a trigger.
+CLI alternative after installing the official Turso CLI:
 
-`supabase/config.production.toml` records the sparse production Auth configuration. Apply it with CLI 3.2.0 from a temporary workdir where it is named `supabase/config.toml`: run `config diff --workdir <dir> --remote=dntblxbqggltyjorzziq`, review, then `config push --workdir <dir> --remote=dntblxbqggltyjorzziq --yes`. Do not push the full local-development config to production. The local stack's convenience defaults are intentionally different.
+```sh
+turso auth login
+turso db create stash-app
+turso db show stash-app --url
+turso db tokens create stash-app
+```
 
-Public email delivery remains a setup dependency: in Supabase Authentication → Email/SMTP, configure your verified sender domain, sender address, SMTP host, port, username and password, using a provider with an appropriate free allowance. Disable email link tracking. Do not upgrade Supabase or enable a paid service just to modify a template. Review provider and Supabase send limits before inviting users. Actual mailbox delivery has not been verified.
+Do not put credentials in a `NEXT_PUBLIC_` variable or commit them. Keep database tokens scoped to this database. Former Supabase code/dependencies have been removed; its remote resources have not been deleted. Earlier email-based accounts are not automatically converted into the new username accounts.
 
-## Behavior
+## AI: Gemini Free
 
-- Paste an HTTP(S) link, optionally give it a title, and save it to your account. The original URL is preserved for opening; a normalized URL prevents duplicate saves within that account.
-- Known tracking parameters are removed from the deduplication key. Meaningful fragments, path case, and query values are preserved. Common YouTube short links are converted to watch URLs. Normalization deliberately avoids guessing equivalence across arbitrary sites.
-- Platform detection matches hostname boundaries, not substrings. No submitted URL is fetched or resolved server-side.
-- Search matches a literal case-insensitive substring in the stored title and URL. Filters and pagination run in the database, with 24 items per page. Search and filters are URL-addressable.
-- Links appear only after the database confirms saving; delete requires confirmation. Failed operations retain the input and display an error.
-- Sessions use Supabase SSR cookies. Proxy refreshes tokens, protected pages and mutations verify the current user, and RLS also protects direct Data API calls. Auth responses are private/no-store. No privileged database client is used.
-- Devices read the same cloud database. Returning to a tab or focusing the window refreshes the library; continuous Realtime subscriptions are not included in Phase 1.
-- Processing status is `saved`. No title, summary, or analysis is fabricated.
+1. At https://aistudio.google.com/api-keys create an API key in a project **without billing enabled**.
+2. Configure these server-only values locally and on Vercel:
 
-## Verification
+   ```dotenv
+   GEMINI_API_KEY=your-key
+   GEMINI_FREE_TIER_CONFIRMED=true
+   ```
+
+3. This version uses `gemini-3.5-flash-lite`, currently listed with a free input/output tier. Actual request and token limits are project-specific; check https://aistudio.google.com/rate-limit. Do not enable billing to make a quota error disappear.
+4. The backend caps AI attempts at 5 indexed saves and 20 searches per account/day, with a shared ceiling of 50 calls/day. Failed calls also count; keyword search does not consume AI usage. Limits reset at UTC midnight. Provider exhaustion returns a visible fallback without losing the link.
+5. If credentials or free capacity are unavailable, link saving, public metadata extraction, ordinary search and deletion still work. The UI says when analysis is limited, deferred, or unavailable. It never substitutes a fake AI summary.
+
+Free-tier requests may be used by Google to improve its products. Only the selected link's public text is sent for organization. Search sends bounded metadata from the current user's own library. API keys never reach the browser or prompts. See https://aistudio.google.com/docs/pricing and https://aistudio.google.com/docs/rate-limits.
+
+## How saving and search work
+
+The save API persists the URL immediately. The browser then calls a separate synchronous analysis API request; there is no background infrastructure. If a tab closes before analysis starts, use **Analyze** on the saved link later. Analysis uses a short database lease to prevent overlapping calls and can be retried if interrupted.
+
+Website text and metadata are extracted from public HTML. YouTube uses public oEmbed title/author metadata; it does not imply access to transcripts. X uses public oEmbed when available. Instagram is limited to publicly accessible metadata. Login walls, private content, unsupported responses, and source errors preserve the original link and show limited indexing. Metadata-only sources never receive an invented full-content summary.
+
+Extraction accepts only HTTP(S) on standard ports, rejects literal IPs and private/reserved DNS answers, pins validated DNS addresses to the HTTP connection, revalidates each redirect, and bounds time, redirects, headers, and response size. No login cookies, paywall bypasses, or platform access credentials are used.
+
+Search first ranks the account's stored titles, descriptions, summaries, tags and available text by useful query words. When AI is available, it reranks up to 40 candidates by semantic relevance. The account library is bounded at 500 links for this prototype. AI results are accepted only when their IDs belong to the supplied private candidates. No new saved items or URLs can be generated by search. Keyword results remain available during AI failures.
+
+## Checks
 
 ```sh
 npm run lint
@@ -74,37 +89,14 @@ npm run test:e2e
 npm run test:ui
 ```
 
-`npm test` runs URL/search tests and executes the actual migration in PGlite (PostgreSQL in WASM), testing save/search/delete, duplicates, schema validation, owner reassignment, anonymous denial, and two-user RLS isolation. The test emulates the `auth.uid()` boundary; it does **not** verify hosted Supabase authentication or the Data API.
+Unit/database tests use actual SQLite and verify persistence across reconnects, password hashing, session expiry/revocation, duplicate handling, ownership isolation, AI usage limits, URL defenses, extraction, and AI output validation. Browser tests cover registration/login/save/refresh/search/delete/logout, direct cross-account API access, CSRF rejection and responsive layouts at 320, 390, 768 and 1440px.
 
-Browser checks cover responsive sign-in at 320, 390, 768, and 1440px, route protection, and failed authentication callbacks. Check real iOS Safari/Android hardware for the software keyboard, safe areas, touch feedback, and browser chrome; desktop emulation cannot establish those behaviors.
+Browser tests use port 3001 and an isolated local database/build directory. They do not impersonate an AI provider: ordinary CI checks run without an AI key and verify the honest fallback. Genuine Gemini organization and natural-language search are also verified separately through the real app when credentials are configured. Keep physical-phone keyboard, safe-area and touch checks separate from desktop browser emulation.
 
-`npm run test:ui` temporarily creates an ignored `/dev-qa` route to render the actual dashboard with test fixtures (Demo data / Worst case / Empty / One), then removes it. It checks all four widths, large text, dialogs and keyboard focus. This route is not committed or deployed; production `/library` only reads the authenticated cloud database. Start the dev server before running this test, or let Playwright start it. Do not run a production build concurrently with this temporary fixture test.
+`npm run test:ui` generates an ignored temporary `/dev-qa` fixture route, runs worst-case layout tests, and removes it. It is not part of the production app. Do not build/deploy while that test is running.
 
-For actual hosted Auth and direct API verification, create two dedicated, confirmed test accounts with passwords in a test project. Put `STASH_TEST_EMAIL_A`, `STASH_TEST_PASSWORD_A`, `STASH_TEST_EMAIL_B`, and `STASH_TEST_PASSWORD_B` in the ignored `.env.local`, then:
+## Deployment
 
-```sh
-npm run test:live
-```
+Use the existing GitHub → Vercel connection. `main` is production; feature branches produce previews. Configure the four environment variables above in the appropriate Vercel environments. Run checks before committing and pushing, then verify the resulting deployment's commit and READY status. Never claim the hosted database or AI was verified from a successful build alone.
 
-The script signs in through Auth, saves and re-reads a unique URL, searches, checks duplicates and cross-user direct API reads/inserts/updates/deletes, deletes the test records, and signs out. It never needs a service key. `npm run test:e2e` also runs a real authenticated browser save/refresh/search/isolation/delete/sign-out flow when those test-account variables are present; otherwise that test is explicitly skipped. With a valid one-time `STASH_TEST_TOKEN_HASH`, it also verifies the email token callback and session persistence. Test credentials never belong in Vercel.
-
-Hosted Auth/Data API isolation and both local authenticated browser flows have passed against the actual Stash project using two temporary confirmed test accounts. The accounts and their test records were deleted afterward. Token generation for that check did not send email. Actual inbox delivery and the default email sender's user-initiated PKCE journey still need verification after SMTP is configured: request a link → open email in the same browser → save → reload → search → open original → delete → sign out. Repeat with a second account.
-
-## GitHub → Vercel
-
-- Private repository: https://github.com/devkush15/stash-app
-- Vercel project: `stash-app`, scope `devanshi9` (local identity in ignored `.vercel/project.json`).
-- Production: https://stash-app-sigma.vercel.app. Development: http://localhost:3000.
-- GitHub is connected, production branch is `main`, and a push to `feat/ui-verification` has triggered a verified READY automatic preview at https://stash-app-git-feat-ui-verification-devanshi9.vercel.app. All three production environment variables are configured, and production deployment protection is disabled.
-- Framework: Next.js. Install: `npm ci`. Build: `npm run build`. Output: framework default. Use Node.js 24 LTS.
-- Retain the existing repository connection under Vercel Project Settings → Git. If access to the private repo fails, configure the Vercel GitHub App to include `stash-app`, then retry the connection. Use `main` for production and feature branches for previews.
-- Configure all three application variables for Production. For trusted previews use the same Supabase project with its redirect allowlist and that preview's `APP_URL`, or a separate test project. Never expose an untrusted wildcard callback domain.
-- Disable Vercel deployment protection for production so the deployed app can be visited publicly; Supabase still protects each library.
-- GitHub Actions checks lint, TypeScript, tests, build, and public browser flows on main pushes and pull requests. Native Vercel Git integration deploys pushes automatically; verify a READY deployment matching each intended commit. Native deployment does not wait for GitHub Actions, so run checks before pushing to main.
-- For each phase: implement → run relevant checks/build → commit → push → inspect deployment status and URL. Continue using this repository and Vercel project; do not recreate them.
-
-## Phase 2 boundary
-
-`saved_items` has nullable title/description, a processing-state vocabulary, and timestamps ready for a durable extraction job. A later migration can add tags, collections and an embedding relation without changing URL ownership. Preserve the saved link on extraction failure. Treat fetched content as untrusted data and add SSRF defenses, timeouts and size limits before introducing any fetching.
-
-No AI provider is configured and AI requests cost nothing because none are made. Proposed limits (5 processed saves and 20 semantic searches per user/day) are planning targets, not enforced or validated capacity. Before enabling AI, implement atomic server-side quotas, shared app caps, provider budgets/monitoring and capacity-exhausted behavior. Keyword search must remain available without AI credits.
+This assignment app intentionally has no password reset, email verification, optional account linking, automatic content refresh, or imports. Links are preserved when source extraction or AI fails.

@@ -1,13 +1,15 @@
-export function isSupabaseConfigured() {
-  return Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+export function isDatabaseConfigured() {
+  return (
+    !process.env.VERCEL ||
+    Boolean(
+      process.env.TURSO_DATABASE_URL?.startsWith("libsql://") &&
+      process.env.TURSO_AUTH_TOKEN,
+    )
   );
 }
-
-export function supabaseEnv() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) throw new Error("Supabase is not configured.");
-  return { url, key };
+export function isAiConfigured() {
+  return Boolean(
+    process.env.GEMINI_API_KEY &&
+    process.env.GEMINI_FREE_TIER_CONFIRMED === "true",
+  );
 }

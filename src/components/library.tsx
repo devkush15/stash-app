@@ -21,6 +21,7 @@ import { LinkDialog } from "./link-dialog";
 import { SavedLink } from "./saved-link";
 import { libraryHref, PAGE_SIZE, sources } from "@/lib/links";
 import type { Platform, SavedItem } from "@/lib/database.types";
+import { api } from "@/lib/client-api";
 
 export type LibraryProps = {
   items: SavedItem[];
@@ -33,9 +34,9 @@ export type LibraryProps = {
 };
 
 export function Library({
-  items,
+  items: initialItems,
   email,
-  total,
+  total: initialTotal,
   q,
   platform,
   page,
@@ -45,6 +46,54 @@ export function Library({
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [pending, startTransition] = useTransition();
+  const [searching, startSearch] = useTransition();
+  const [searchResult, setSearchResult] = useState<{
+    key: string;
+    items: SavedItem[];
+    note: string;
+  } | null>(null);
+  const [analyzing, setAnalyzing] = useState<string[]>([]);
+  const searchKey = JSON.stringify([q, platform]);
+  const activeSearch = searchResult?.key === searchKey ? searchResult : null;
+  const items = activeSearch
+    ? activeSearch.items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+    : initialItems;
+  const total = activeSearch ? activeSearch.items.length : initialTotal;
+  useEffect(() => {
+    if (!q) return;
+    let canceled = false;
+    startSearch(async () => {
+      try {
+        const result = await api<{ items: SavedItem[]; note: string }>(
+          "/api/search",
+          { method: "POST", body: JSON.stringify({ q, source: platform }) },
+        );
+        if (!canceled)
+          setSearchResult({ key: JSON.stringify([q, platform]), ...result });
+      } catch {
+        if (!canceled)
+          setNotice("Keyword results · AI search is unavailable right now.");
+      }
+    });
+    return () => {
+      canceled = true;
+    };
+  }, [q, platform]);
+  async function analyze(id: string) {
+    setAnalyzing((previous) => [...previous, id]);
+    try {
+      await api(`/api/items/${id}/index`, { method: "POST" });
+      router.refresh();
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Analysis is unavailable. Link saved.",
+      );
+    } finally {
+      setAnalyzing((previous) => previous.filter((value) => value !== id));
+    }
+  }
   const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const handle = (event: KeyboardEvent) => {
@@ -87,6 +136,7 @@ export function Library({
         <nav className="source-nav" aria-label="Sources">
           {sources.map((source) => (
             <Link
+              prefetch={false}
               key={source.value}
               href={libraryHref(q, source.value)}
               className={`source-nav-link ${platform === source.value ? "selected" : ""}`}
@@ -153,7 +203,7 @@ export function Library({
               className="icon-button search-submit"
               aria-label="Search"
             >
-              {pending ? (
+              {pending || searching ? (
                 <LoaderCircle className="spinner" size={17} />
               ) : (
                 <ChevronRight size={18} />
@@ -174,6 +224,7 @@ export function Library({
         <nav className="mobile-source-nav" aria-label="Filter by source">
           {sources.map((source) => (
             <Link
+              prefetch={false}
               key={source.value}
               href={libraryHref(q, source.value)}
               className={`source-chip ${platform === source.value ? "selected" : ""}`}
@@ -188,7 +239,7 @@ export function Library({
           id="library-content"
           className="library-content"
           tabIndex={-1}
-          aria-busy={pending}
+          aria-busy={pending || searching}
         >
           <div className="library-heading">
             <h1>{q ? "Search results" : title}</h1>
@@ -212,6 +263,13 @@ export function Library({
                 <X size={16} aria-hidden="true" />
               </Link>
             </div>
+          )}
+          {q && (
+            <p className="search-mode" role="status">
+              {searching
+                ? "Searching…"
+                : activeSearch?.note || "Keyword results"}
+            </p>
           )}
           {notice && (
             <div role="status" className="success-notice">
@@ -247,14 +305,23 @@ export function Library({
                   <SavedLink
                     key={item.id}
                     item={item}
-                    onDeleted={() => notify("Link deleted.")}
+                    analyzing={analyzing.includes(item.id)}
+                    onAnalyze={analyze}
+                    onDeleted={() => {
+                      setSearchResult((previous) =>
+                        previous
+                          ? {
+                              ...previous,
+                              items: previous.items.filter(
+                                (i) => i.id !== item.id,
+                              ),
+                            }
+                          : null,
+                      );
+                      notify("Link deleted.");
+                    }}
                   />
                 ))}
-              </div>
-              <div className="library-end">
-                <span>
-                  {q ? "Your finds, found." : "A little less scattered."}
-                </span>
               </div>
             </>
           ) : (
@@ -327,15 +394,16 @@ export function Library({
           )}
         </main>
         <footer className="app-footer">
-          <span>Keep what clicks.</span>
+          <span>Private library</span>
           <span>stash.</span>
         </footer>
       </div>
       <LinkDialog
         open={open}
         onOpenChange={setOpen}
-        onSaved={() => {
+        onSaved={(item) => {
           notify("Link saved.");
+          void analyze(item.id);
           if (q || platform !== "all" || page > 1) router.push("/library");
         }}
       />

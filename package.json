@@ -10,23 +10,24 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:live": "node --env-file=.env.local scripts/verify-supabase.mjs",
     "check": "npm run lint && npm run typecheck && npm test && npm run build",
-    "test:ui": "node scripts/test-ui.mjs"
+    "test:ui": "node scripts/test-ui.mjs",
+    "db:setup": "node --env-file=.env.local scripts/db-setup.mjs"
   },
   "license": "ISC",
   "type": "module",
   "dependencies": {
     "@base-ui/react": "1.9.0",
-    "@supabase/ssr": "0.12.7",
-    "@supabase/supabase-js": "2.119.2",
+    "@libsql/client": "0.18.0",
+    "cheerio": "1.2.0",
+    "ipaddr.js": "2.5.0",
     "lucide-react": "1.77.0",
     "next": "16.4.6",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "undici": "8.13.1"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.17",
     "@playwright/test": "1.65.1",
     "@tailwindcss/postcss": "4.3.5",
     "@types/node": "26.6.6",
