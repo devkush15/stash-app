@@ -1,4 +1,5 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest } from "next/server";
+import { authRedirect } from "@/lib/auth-redirect";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env";
 
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
       token_hash,
       type: "email",
     });
-    if (!error) return NextResponse.redirect(new URL("/library", request.url));
+    if (!error) return authRedirect("/library");
   }
-  return NextResponse.redirect(new URL("/sign-in?error=expired", request.url));
+  return authRedirect("/sign-in?error=expired");
 }

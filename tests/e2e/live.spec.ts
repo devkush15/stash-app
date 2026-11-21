@@ -15,6 +15,37 @@ test.skip(
   "Requires two confirmed dedicated Supabase test accounts; see README.",
 );
 
+test("email token callback establishes a real SSR session", async ({
+  browser,
+  baseURL,
+}) => {
+  test.skip(
+    !process.env.STASH_TEST_TOKEN_HASH,
+    "Requires a generated one-time test email token.",
+  );
+  const context = await browser.newContext({ baseURL });
+  try {
+    const page = await context.newPage();
+    await page.goto(
+      `/auth/callback?token_hash=${encodeURIComponent(process.env.STASH_TEST_TOKEN_HASH!)}&type=email`,
+    );
+    await expect(page).toHaveURL(/\/library$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      "All links",
+    );
+    await page.reload();
+    await expect(page).toHaveURL(/\/library$/);
+    await page
+      .getByRole("button", { name: "Account menu" })
+      .filter({ visible: true })
+      .click();
+    await page.getByRole("menuitem", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/\/sign-in$/);
+  } finally {
+    await context.close();
+  }
+});
+
 // Obtain genuine Auth sessions; no mocked API, test auth bypass or service key.
 async function authenticate(
   context: BrowserContext,

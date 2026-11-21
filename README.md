@@ -2,14 +2,17 @@
 
 A private library for the links you want to keep. Phase 1 uses Next.js App Router, TypeScript, Tailwind CSS, and Supabase Auth/PostgreSQL. There is no AI integration, extraction, billing, localStorage content database, or production sample data.
 
+Production: https://stash-app-sigma.vercel.app · Private source: https://github.com/devkush15/stash-app
+
+The cloud project is `stash-app` (`dntblxbqggltyjorzziq`) in the separate `stash-app` organization, Mumbai region. The migration, RLS, production redirect allowlist, and Vercel environment variables are configured. Existing unrelated projects were not changed. The current checkout already has its ignored `.env.local`; preserve it.
+
 ## Run locally
 
 Use Node.js 24 LTS and npm.
 
 ```sh
 npm ci
-cp .env.example .env.local
-# Fill in the three application variables below.
+# Fresh clones only: copy .env.example to .env.local and fill in the variables.
 npm run dev
 ```
 
@@ -25,22 +28,28 @@ Only the publishable key belongs in public configuration. The app does not need 
 
 ## Supabase setup
 
-1. Create a **new** free-plan project named `stash-app` in the intended organization. Do not use another app's database. Choose a region near your users.
+These steps describe reproducible setup. The current Stash project already has steps 1–5 configured; do not recreate it or re-run its initial migration.
+
+1. For a fresh installation, create a **new** free-plan project named `stash-app` in the intended organization. Do not use another app's database. Choose a region near your users.
 2. In the SQL Editor run the version-controlled file `supabase/migrations/20261121194730_saved_items.sql`. For a CLI-managed project, use the installed CLI's help for `link` and migration application; pin the CLI version used by your team. The initial files were generated with CLI 3.2.0.
 3. Copy the API URL and **publishable** key from the project's Connect/API settings into `.env.local` and Vercel environment settings.
 4. Enable the Email provider and allow new sign-ups in Authentication. This application uses a single passwordless email flow for sign-up and sign-in.
 5. Under Authentication → URL Configuration, set **Site URL** to the production `APP_URL`. Add exact Redirect URLs for `http://localhost:3000/auth/callback`, your production `/auth/callback`, and production `/auth/confirm`. Add only trusted preview origins when testing preview authentication.
-6. The default magic-link template works with the PKCE `/auth/callback` route in the browser that requested the link. For links that work across devices, set both **Confirm signup** and **Magic Link** email templates to a link with this exact target:
+6. The default magic-link template works with the PKCE `/auth/callback` route in the browser that requested the link. Open each requested link in that same browser. Each device can sign in separately and use the same synced library. Supabase currently rejects template customization on free projects using its default email sender. Once a verified custom SMTP provider is configured, optionally use `supabase/templates/sign-in.html` for both **Confirm signup** and **Magic Link**, with this target:
 
    ```html
-   <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email">Sign in to Stash</a>
+   <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&amp;type=email">Sign in to Stash</a>
    ```
 
-   This uses the production Site URL. Use the default PKCE template or a separate test project for local/preview email testing. The confirmation route accepts only email verification and always redirects to `/library`.
+   The app sets `RedirectTo` from its configured `APP_URL`. The callback supports both default PKCE codes and email token hashes, and always redirects to `/library`. `/auth/confirm` also accepts email token hashes. Redirects keep the browser's actual host so session cookies are preserved behind proxies and local bind addresses.
 7. Before inviting public users, configure a verified custom SMTP sender. Supabase's default sender restricts recipients and volume; a production email sign-in page alone does not remove that restriction. Review current Auth email rate limits and enable CAPTCHA if needed for public sign-up abuse. Do not assume free email capacity is unlimited.
 8. Restart the dev server after changing environment variables. Redeploy Vercel after changing production variables.
 
 The migration explicitly grants table access only to authenticated users, enables and forces RLS, applies separate owner policies to all four operations, checks ownership during updates, and enforces `(user_id, normalized_url)` uniqueness. Deleted users cascade to their items. `updated_at` is maintained by a trigger.
+
+`supabase/config.production.toml` records the sparse production Auth configuration. Apply it with CLI 3.2.0 from a temporary workdir where it is named `supabase/config.toml`: run `config diff --workdir <dir> --remote=dntblxbqggltyjorzziq`, review, then `config push --workdir <dir> --remote=dntblxbqggltyjorzziq --yes`. Do not push the full local-development config to production. The local stack's convenience defaults are intentionally different.
+
+Public email delivery remains a setup dependency: in Supabase Authentication → Email/SMTP, configure your verified sender domain, sender address, SMTP host, port, username and password, using a provider with an appropriate free allowance. Disable email link tracking. Do not upgrade Supabase or enable a paid service just to modify a template. Review provider and Supabase send limits before inviting users. Actual mailbox delivery has not been verified.
 
 ## Behavior
 
@@ -77,14 +86,18 @@ For actual hosted Auth and direct API verification, create two dedicated, confir
 npm run test:live
 ```
 
-The script signs in through Auth, saves and re-reads a unique URL, searches, checks duplicates and cross-user direct API reads/inserts/updates/deletes, deletes the test records, and signs out. It never needs a service key. It does not send sign-in emails. Also manually verify the email-link journey in the deployed app: request a link → open email → save → reload → search → open original → delete → sign out. Repeat with a second account. Do not call the hosted flow verified until it has actually passed.
+The script signs in through Auth, saves and re-reads a unique URL, searches, checks duplicates and cross-user direct API reads/inserts/updates/deletes, deletes the test records, and signs out. It never needs a service key. `npm run test:e2e` also runs a real authenticated browser save/refresh/search/isolation/delete/sign-out flow when those test-account variables are present; otherwise that test is explicitly skipped. With a valid one-time `STASH_TEST_TOKEN_HASH`, it also verifies the email token callback and session persistence. Test credentials never belong in Vercel.
+
+Hosted Auth/Data API isolation and both local authenticated browser flows have passed against the actual Stash project using two temporary confirmed test accounts. The accounts and their test records were deleted afterward. Token generation for that check did not send email. Actual inbox delivery and the default email sender's user-initiated PKCE journey still need verification after SMTP is configured: request a link → open email in the same browser → save → reload → search → open original → delete → sign out. Repeat with a second account.
 
 ## GitHub → Vercel
 
 - Private repository: https://github.com/devkush15/stash-app
 - Vercel project: `stash-app`, scope `devanshi9` (local identity in ignored `.vercel/project.json`).
+- Production: https://stash-app-sigma.vercel.app. Development: http://localhost:3000.
+- GitHub is connected, production branch is `main`, and a push to `feat/ui-verification` has triggered a verified READY automatic preview at https://stash-app-git-feat-ui-verification-devanshi9.vercel.app. All three production environment variables are configured, and production deployment protection is disabled.
 - Framework: Next.js. Install: `npm ci`. Build: `npm run build`. Output: framework default. Use Node.js 24 LTS.
-- Connect the repository under Vercel Project Settings → Git. If access to the private repo fails, configure the Vercel GitHub App to include `stash-app`, then retry the connection. Use `main` for production and feature branches for previews.
+- Retain the existing repository connection under Vercel Project Settings → Git. If access to the private repo fails, configure the Vercel GitHub App to include `stash-app`, then retry the connection. Use `main` for production and feature branches for previews.
 - Configure all three application variables for Production. For trusted previews use the same Supabase project with its redirect allowlist and that preview's `APP_URL`, or a separate test project. Never expose an untrusted wildcard callback domain.
 - Disable Vercel deployment protection for production so the deployed app can be visited publicly; Supabase still protects each library.
 - GitHub Actions checks lint, TypeScript, tests, build, and public browser flows on main pushes and pull requests. Native Vercel Git integration deploys pushes automatically; verify a READY deployment matching each intended commit. Native deployment does not wait for GitHub Actions, so run checks before pushing to main.

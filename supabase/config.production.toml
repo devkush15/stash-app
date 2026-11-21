@@ -1,0 +1,16 @@
+# Sparse production configuration. Omitted properties are left unchanged.
+# Apply using the CLI from a temporary workdir with this file as supabase/config.toml.
+project_id = "stash-app"
+
+[auth]
+site_url = "https://stash-app-sigma.vercel.app"
+additional_redirect_urls = ["https://stash-app-sigma.vercel.app/auth/callback", "https://stash-app-sigma.vercel.app/auth/confirm", "https://stash-app-git-feat-ui-verification-devanshi9.vercel.app/auth/callback", "http://localhost:3000/auth/callback", "http://127.0.0.1:3000/auth/callback"]
+enable_signup = true
+enable_anonymous_sign_ins = false
+
+[auth.email]
+enable_confirmations = true
+
+# The default email provider on the free plan does not allow template edits.
+# The app supports its default PKCE callback. Custom templates can be enabled
+# with a verified custom SMTP provider; see templates/sign-in.html.
