@@ -19,6 +19,7 @@ import { SourceIcon } from "./source-icon";
 import { AccountMenu } from "./account-menu";
 import { LinkDialog } from "./link-dialog";
 import { SavedLink } from "./saved-link";
+import { TagPicker, tagLabel, tagTone } from "./tag-picker";
 import { libraryHref, PAGE_SIZE, sources } from "@/lib/links";
 import type { Platform, SavedItem } from "@/lib/database.types";
 import { api } from "@/lib/client-api";
@@ -31,6 +32,8 @@ export type LibraryProps = {
   platform: Platform | "all";
   page: number;
   error?: boolean;
+  tags?: string[];
+  tag?: string;
 };
 
 export function Library({
@@ -41,8 +44,18 @@ export function Library({
   platform,
   page,
   error,
+  tags = [],
+  tag = "",
 }: LibraryProps) {
   const router = useRouter();
+  const [extraTags, setExtraTags] = useState<string[]>([]);
+  const tagOptions = [
+    ...new Set([
+      ...tags,
+      ...extraTags,
+      ...initialItems.flatMap((item) => item.tags),
+    ]),
+  ];
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [pending, startTransition] = useTransition();
@@ -53,7 +66,7 @@ export function Library({
     note: string;
   } | null>(null);
   const [analyzing, setAnalyzing] = useState<string[]>([]);
-  const searchKey = JSON.stringify([q, platform]);
+  const searchKey = JSON.stringify([q, platform, tag]);
   const activeSearch = searchResult?.key === searchKey ? searchResult : null;
   const items = activeSearch
     ? activeSearch.items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -66,10 +79,16 @@ export function Library({
       try {
         const result = await api<{ items: SavedItem[]; note: string }>(
           "/api/search",
-          { method: "POST", body: JSON.stringify({ q, source: platform }) },
+          {
+            method: "POST",
+            body: JSON.stringify({ q, source: platform, tag }),
+          },
         );
         if (!canceled)
-          setSearchResult({ key: JSON.stringify([q, platform]), ...result });
+          setSearchResult({
+            key: JSON.stringify([q, platform, tag]),
+            ...result,
+          });
       } catch {
         if (!canceled)
           setNotice("Keyword results · AI search is unavailable right now.");
@@ -78,7 +97,7 @@ export function Library({
     return () => {
       canceled = true;
     };
-  }, [q, platform]);
+  }, [q, platform, tag]);
   async function analyze(id: string) {
     setAnalyzing((previous) => [...previous, id]);
     try {
@@ -123,6 +142,15 @@ export function Library({
       ? "All links"
       : sources.find((s) => s.value === platform)?.label;
 
+  const grouped = new Map<string, SavedItem[]>();
+  for (const item of items) {
+    const key = q ? "Results" : tag || item.tags[0] || "Unsorted";
+    grouped.set(key, [...(grouped.get(key) || []), item]);
+  }
+  const groups = [...grouped].sort((a, b) =>
+    q ? 0 : a[0].localeCompare(b[0]),
+  );
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#library-content">
@@ -138,7 +166,7 @@ export function Library({
             <Link
               prefetch={false}
               key={source.value}
-              href={libraryHref(q, source.value)}
+              href={libraryHref(q, source.value, 1, tag)}
               className={`source-nav-link ${platform === source.value ? "selected" : ""}`}
               aria-current={platform === source.value ? "page" : undefined}
             >
@@ -173,6 +201,8 @@ export function Library({
                       .trim()
                       .slice(0, 200),
                     platform,
+                    1,
+                    tag,
                   ),
                 ),
               );
@@ -226,7 +256,7 @@ export function Library({
             <Link
               prefetch={false}
               key={source.value}
-              href={libraryHref(q, source.value)}
+              href={libraryHref(q, source.value, 1, tag)}
               className={`source-chip ${platform === source.value ? "selected" : ""}`}
               aria-current={platform === source.value ? "page" : undefined}
             >
@@ -241,6 +271,27 @@ export function Library({
           tabIndex={-1}
           aria-busy={pending || searching}
         >
+          <section className="library-tags" aria-label="Tags">
+            <h2>Tags</h2>
+            <TagPicker
+              single
+              options={tagOptions}
+              selected={tag ? [tag] : []}
+              onChange={(values) =>
+                startTransition(() =>
+                  router.push(libraryHref(q, platform, 1, values[0] || "")),
+                )
+              }
+              onCreate={async (value) => {
+                const result = await api<{ tags: string[] }>("/api/tags", {
+                  method: "POST",
+                  body: JSON.stringify({ tag: value }),
+                });
+                setExtraTags(result.tags);
+                router.refresh();
+              }}
+            />
+          </section>
           <div className="library-heading">
             <h1>{q ? "Search results" : title}</h1>
             {!error && (
@@ -256,7 +307,7 @@ export function Library({
                 Results for <strong>“{q}”</strong>
               </span>
               <Link
-                href={libraryHref("", platform)}
+                href={libraryHref("", platform, 1, tag)}
                 className="icon-button"
                 aria-label="Clear search"
               >
@@ -300,27 +351,48 @@ export function Library({
             </div>
           ) : items.length ? (
             <>
-              <div className="content-grid">
-                {items.map((item) => (
-                  <SavedLink
-                    key={item.id}
-                    item={item}
-                    analyzing={analyzing.includes(item.id)}
-                    onAnalyze={analyze}
-                    onDeleted={() => {
-                      setSearchResult((previous) =>
-                        previous
-                          ? {
-                              ...previous,
-                              items: previous.items.filter(
-                                (i) => i.id !== item.id,
-                              ),
-                            }
-                          : null,
-                      );
-                      notify("Link deleted.");
-                    }}
-                  />
+              <div className="tag-groups">
+                {groups.map(([group, links]) => (
+                  <section
+                    className={`tag-group tag-tone-${tagTone(group)}`}
+                    key={group}
+                  >
+                    {!q && (
+                      <div className="tag-group-heading">
+                        <h2>{tagLabel(group)}</h2>
+                        <span>{links.length}</span>
+                      </div>
+                    )}
+                    <div className="content-grid">
+                      {links.map((item) => (
+                        <SavedLink
+                          key={item.id}
+                          item={item}
+                          tagOptions={tagOptions}
+                          analyzing={analyzing.includes(item.id)}
+                          onAnalyze={analyze}
+                          onEdited={(updated, reanalyze) => {
+                            setSearchResult(null);
+                            notify("Link updated.");
+                            if (reanalyze) void analyze(updated.id);
+                          }}
+                          onDeleted={() => {
+                            setSearchResult((previous) =>
+                              previous
+                                ? {
+                                    ...previous,
+                                    items: previous.items.filter(
+                                      (i) => i.id !== item.id,
+                                    ),
+                                  }
+                                : null,
+                            );
+                            notify("Link deleted.");
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </section>
                 ))}
               </div>
             </>
@@ -336,9 +408,11 @@ export function Library({
               <h2>
                 {q
                   ? "No matching links."
-                  : platform === "all"
-                    ? "Keep your first good find."
-                    : `No ${title} links yet.`}
+                  : tag
+                    ? `No links tagged “${tagLabel(tag)}”.`
+                    : platform === "all"
+                      ? "Keep your first good find."
+                      : `No ${title} links yet.`}
               </h2>
               <p>
                 {q
@@ -347,7 +421,7 @@ export function Library({
               </p>
               {q ? (
                 <Link
-                  href={libraryHref("", platform)}
+                  href={libraryHref("", platform, 1, tag)}
                   className="button button-secondary"
                 >
                   Clear search
@@ -368,7 +442,7 @@ export function Library({
               {page > 1 ? (
                 <Link
                   className="button button-secondary"
-                  href={libraryHref(q, platform, page - 1)}
+                  href={libraryHref(q, platform, page - 1, tag)}
                 >
                   <ChevronLeft size={16} />
                   Previous
@@ -382,7 +456,7 @@ export function Library({
               {page * PAGE_SIZE < total ? (
                 <Link
                   className="button button-secondary"
-                  href={libraryHref(q, platform, page + 1)}
+                  href={libraryHref(q, platform, page + 1, tag)}
                 >
                   Next
                   <ChevronRight size={16} />
@@ -399,12 +473,16 @@ export function Library({
         </footer>
       </div>
       <LinkDialog
+        key={tag}
+        tagOptions={tagOptions}
+        defaultTags={tag ? [tag] : []}
         open={open}
         onOpenChange={setOpen}
         onSaved={(item) => {
           notify("Link saved.");
           void analyze(item.id);
-          if (q || platform !== "all" || page > 1) router.push("/library");
+          if (q || platform !== "all" || page > 1 || tag)
+            router.push("/library");
         }}
       />
     </div>

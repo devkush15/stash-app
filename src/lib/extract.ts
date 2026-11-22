@@ -10,6 +10,7 @@ export type Extracted = {
   description: string | null;
   text: string;
   level: "none" | "metadata" | "text";
+  userNote?: string;
 };
 export function publicAddress(address: string) {
   try {
@@ -35,9 +36,10 @@ export function fetchableUrl(value: string) {
 }
 // Resolve, reject every private/reserved address, and pin the validated answers
 // in the connector. Redirects are fetched manually and revalidated per hop.
-export async function safeFetch(value: string) {
+export async function safeFetch(value: string, headOnly = false) {
   let url = fetchableUrl(value);
   const signal = AbortSignal.timeout(12000);
+  const maxBytes = headOnly ? 1048576 : 524288;
   for (let hop = 0; hop < 4; hop++) {
     const addresses = await Promise.race([
       lookup(url.hostname, { all: true, verbatim: true }),
@@ -87,7 +89,7 @@ export async function safeFetch(value: string) {
         !/text\/(html|plain)|application\/(json|xhtml\+xml)/.test(type) ||
         (response.headers["content-encoding"] &&
           response.headers["content-encoding"] !== "identity") ||
-        Number(response.headers["content-length"]) > 524288
+        (!headOnly && Number(response.headers["content-length"]) > maxBytes)
       ) {
         response.body.destroy();
         throw new Error("Unsupported response");
@@ -96,13 +98,23 @@ export async function safeFetch(value: string) {
       let size = 0;
       for await (const chunk of response.body) {
         size += chunk.length;
-        if (size > 524288) {
+        if (size > maxBytes) {
           response.body.destroy();
           throw new Error("Response too large");
         }
         chunks.push(Buffer.from(chunk));
+        if (
+          headOnly &&
+          Buffer.concat(chunks).includes(Buffer.from("</head>"))
+        ) {
+          response.body.destroy();
+          break;
+        }
       }
-      return { body: Buffer.concat(chunks).toString("utf8"), type };
+      let body = Buffer.concat(chunks).toString("utf8");
+      if (headOnly && body.includes("</head>"))
+        body = body.slice(0, body.indexOf("</head>") + 7);
+      return { body, type };
     } finally {
       await dispatcher.close();
     }
@@ -110,6 +122,35 @@ export async function safeFetch(value: string) {
   throw new Error("Too many redirects");
 }
 const clean = (value: string) => value.replace(/\s+/g, " ").trim();
+export function parseInstagramHtml(html: string): Extracted {
+  const $ = load(html);
+  // Public Open Graph fields only. Never treat login-shell body text as a post.
+  const rawTitle = clean($('meta[property="og:title"]').attr("content") || "");
+  const rawDescription = clean(
+    $('meta[property="og:description"]').attr("content") || "",
+  );
+  const generic =
+    /^(?:instagram|instagram photos and videos|log in.*|sign up.*|see instagram photos and videos.*)$/i;
+  const title =
+    !generic.test(rawTitle) &&
+    !/log in|sign in|page not found|access denied/i.test(rawTitle)
+      ? rawTitle
+          .replace(/^.+? on Instagram:\s*["“]?/i, "")
+          .replace(/["”]\.?$/, "")
+          .slice(0, 200) || null
+      : null;
+  const description =
+    !generic.test(rawDescription) &&
+    !/create an account|log in to|sign up to/i.test(rawDescription)
+      ? rawDescription.slice(0, 2000) || null
+      : null;
+  return {
+    title,
+    description,
+    text: "",
+    level: title || description ? "metadata" : "none",
+  };
+}
 export function parseHtml(html: string): Extracted {
   const $ = load(html);
   const title =
@@ -156,7 +197,6 @@ export async function extractContent(
     level: "none",
   };
   try {
-    if (platform === "whatsapp") return empty;
     if (platform === "youtube") {
       const target = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
       const { body } = await safeFetch(target);
@@ -186,6 +226,12 @@ export async function extractContent(
         level: text ? "text" : "none",
       };
     }
+    if (platform === "instagram") {
+      // oEmbed is restricted by Meta to displaying embeds; its response is never
+      // persisted or sent to AI. Read only the legitimately public page header.
+      const { body } = await safeFetch(url, true);
+      return parseInstagramHtml(body);
+    }
     const { body, type } = await safeFetch(url);
     if (type.startsWith("text/plain"))
       return {
@@ -194,14 +240,7 @@ export async function extractContent(
         text: clean(body).slice(0, 9000),
         level: body.trim().length >= 200 ? "text" : "metadata",
       };
-    const result = parseHtml(body);
-    if (platform === "instagram")
-      return {
-        ...result,
-        text: "",
-        level: result.title || result.description ? "metadata" : "none",
-      };
-    return result;
+    return parseHtml(body);
   } catch {
     return empty;
   }

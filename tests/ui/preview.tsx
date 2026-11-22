@@ -24,6 +24,9 @@ export default async function Preview({
     platform,
     title,
     description: null,
+    user_note: null,
+    title_edited: 0,
+    tags_edited: 0,
     processing_status: "saved",
     created_at: "2026-11-20T12:00:00Z",
     updated_at: "2026-11-20T12:00:00Z",
@@ -79,7 +82,7 @@ export default async function Preview({
       6,
       "👩🏽‍💻 Đặng Thị Ngọc Hân: notes & examples <b>literal text</b>",
       "https://example.com/notes",
-      "whatsapp",
+      "website",
     ),
   ];
   const items =

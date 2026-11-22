@@ -22,6 +22,8 @@ export function keywordSearch(items: SavedItem[], query: string) {
           " " +
           (item.description || "") +
           " " +
+          (item.user_note || "") +
+          " " +
           (item.source_text || "") +
           " " +
           item.original_url,

@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { Client, InValue, Row } from "@libsql/client";
 import type { SavedItem, User } from "./database.types";
-import { SCHEMA } from "./schema";
+import { ensureSchema } from "./schema";
 
 function item(row: Row): SavedItem {
   return {
     ...row,
+    platform: row.platform === "whatsapp" ? "website" : row.platform,
     tags: JSON.parse(String(row.tags || "[]")),
   } as unknown as SavedItem;
 }
@@ -13,12 +14,10 @@ export class Store {
   private initialized?: Promise<unknown>;
   constructor(public client: Client) {}
   async ready() {
-    await (this.initialized ??= this.client
-      .batch([...SCHEMA], "write")
-      .catch((error) => {
-        this.initialized = undefined;
-        throw error;
-      }));
+    await (this.initialized ??= ensureSchema(this.client).catch((error) => {
+      this.initialized = undefined;
+      throw error;
+    }));
   }
   async register(username: string, passwordHash: string): Promise<User> {
     await this.ready();
@@ -65,8 +64,8 @@ export class Store {
   async list(userId: string, platform = "all"): Promise<SavedItem[]> {
     await this.ready();
     const r = await this.client.execute({
-      sql: "SELECT * FROM saved_items WHERE user_id=? AND (?='all' OR platform=?) ORDER BY created_at DESC,id DESC LIMIT 500",
-      args: [userId, platform, platform],
+      sql: "SELECT * FROM saved_items WHERE user_id=? AND (?='all' OR platform=? OR (?='website' AND platform='whatsapp')) ORDER BY created_at DESC,id DESC LIMIT 500",
+      args: [userId, platform, platform, platform],
     });
     return r.rows.map(item);
   }
@@ -82,12 +81,14 @@ export class Store {
     userId: string,
     link: { original_url: string; normalized_url: string; platform: string },
     title: string | null,
+    note: string | null = null,
+    tags: string[] = [],
   ) {
     await this.ready();
     const id = randomUUID(),
       now = new Date().toISOString();
     await this.client.execute({
-      sql: "INSERT INTO saved_items(id,user_id,original_url,normalized_url,platform,title,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+      sql: "INSERT INTO saved_items(id,user_id,original_url,normalized_url,platform,title,user_note,title_edited,tags,tags_edited,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
       args: [
         id,
         userId,
@@ -95,6 +96,10 @@ export class Store {
         link.normalized_url,
         link.platform,
         title,
+        note,
+        title ? 1 : 0,
+        JSON.stringify(tags),
+        tags.length ? 1 : 0,
         now,
         now,
       ],
@@ -104,6 +109,9 @@ export class Store {
   async update(userId: string, id: string, values: Partial<SavedItem>) {
     const allowed = [
       "title",
+      "title_edited",
+      "tags_edited",
+      "user_note",
       "description",
       "summary",
       "category",
@@ -138,10 +146,70 @@ export class Store {
     await this.ready();
     const now = new Date().toISOString();
     const r = await this.client.execute({
-      sql: "UPDATE saved_items SET processing_status='processing',processing_started_at=? WHERE user_id=? AND id=? AND ai_processed_at IS NULL AND (processing_status<>'processing' OR processing_started_at<?) RETURNING *",
+      sql: "UPDATE saved_items SET processing_status='processing',processing_started_at=? WHERE user_id=? AND id=? AND ai_processed_at IS NULL AND processing_status<>'limited' AND (processing_status<>'processing' OR processing_started_at<?) RETURNING *",
       args: [now, userId, id, new Date(Date.now() - 120000).toISOString()],
     });
     return r.rows[0] ? item(r.rows[0]) : null;
+  }
+  async edit(
+    userId: string,
+    id: string,
+    values: { title: string | null; note: string | null; tags: string[] },
+  ) {
+    await this.ready();
+    const tx = await this.client.transaction("write");
+    try {
+      const result = await tx.execute({
+        sql: "SELECT * FROM saved_items WHERE user_id=? AND id=?",
+        args: [userId, id],
+      });
+      if (!result.rows[0]) {
+        await tx.rollback();
+        return null;
+      }
+      const before = item(result.rows[0]);
+      if (
+        before.processing_status === "processing" &&
+        before.processing_started_at &&
+        Date.parse(before.processing_started_at) > Date.now() - 120000
+      )
+        throw new Error("ANALYSIS_BUSY");
+      const changedNote = values.note !== before.user_note;
+      const titleEdited =
+        values.title === before.title
+          ? before.title_edited
+          : values.title
+            ? 1
+            : 0;
+      const tagsEdited =
+        JSON.stringify(values.tags) === JSON.stringify(before.tags)
+          ? before.tags_edited
+          : 1;
+      await tx.execute({
+        sql: "UPDATE saved_items SET title=?,user_note=?,tags=?,title_edited=?,tags_edited=?,updated_at=?,summary=?,category=?,ai_processed_at=?,processing_status=?,processing_started_at=NULL WHERE user_id=? AND id=?",
+        args: [
+          values.title,
+          values.note,
+          JSON.stringify(values.tags),
+          titleEdited,
+          tagsEdited,
+          new Date().toISOString(),
+          changedNote ? null : before.summary,
+          changedNote ? null : before.category,
+          changedNote ? null : before.ai_processed_at,
+          changedNote ? "pending" : before.processing_status,
+          userId,
+          id,
+        ],
+      });
+      await tx.commit();
+      return { item: (await this.get(userId, id))!, reanalyze: changedNote };
+    } catch (error) {
+      await tx.rollback();
+      throw error;
+    } finally {
+      tx.close();
+    }
   }
   async delete(userId: string, id: string) {
     await this.ready();
@@ -159,6 +227,48 @@ export class Store {
       args: [key, bucket],
     });
     return Number(r.rows[0].count) <= cap;
+  }
+  async tagCatalog(userId: string, items?: SavedItem[]) {
+    await this.ready();
+    const result = await this.client.execute({
+      sql: "SELECT custom_tags FROM users WHERE id=?",
+      args: [userId],
+    });
+    const custom = JSON.parse(
+      String(result.rows[0]?.custom_tags || "[]"),
+    ) as string[];
+    const links = items || (await this.list(userId));
+    return [
+      ...new Set([...custom, ...links.flatMap((link) => link.tags)]),
+    ].sort((a, b) => a.localeCompare(b));
+  }
+  async addTag(userId: string, tag: string) {
+    await this.ready();
+    const tx = await this.client.transaction("write");
+    try {
+      const result = await tx.execute({
+        sql: "SELECT custom_tags FROM users WHERE id=?",
+        args: [userId],
+      });
+      const tags = [
+        ...new Set([
+          ...JSON.parse(String(result.rows[0]?.custom_tags || "[]")),
+          tag,
+        ]),
+      ] as string[];
+      if (tags.length > 32) throw new Error("TAG_LIMIT");
+      await tx.execute({
+        sql: "UPDATE users SET custom_tags=? WHERE id=?",
+        args: [JSON.stringify(tags), userId],
+      });
+      await tx.commit();
+    } catch (error) {
+      await tx.rollback();
+      throw error;
+    } finally {
+      tx.close();
+    }
+    return this.tagCatalog(userId);
   }
   async aiQuota(userId: string, kind: "save" | "search") {
     await this.ready();

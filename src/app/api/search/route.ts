@@ -22,7 +22,13 @@ export async function POST(request: Request) {
       platform = typeof body.source === "string" ? body.source : "all";
     if (!query || !sources.some((s) => s.value === platform))
       throw new HttpError(400, "Enter a search query.");
-    const all = await db().list(user.id, platform),
+    const tag =
+      typeof body.tag === "string"
+        ? body.tag.trim().toLowerCase().slice(0, 40)
+        : "";
+    const all = (await db().list(user.id, platform)).filter(
+        (item) => !tag || item.tags.includes(tag),
+      ),
       keyword = keywordSearch(all, query);
     let note = "Keyword results";
     if (!all.length) return json({ items: [], mode: "keyword", note });

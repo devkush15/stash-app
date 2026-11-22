@@ -74,6 +74,56 @@ describe.sequential("Private persistent SQLite libraries", () => {
     await store.createSession(alice, "expired", "2000-01-01T00:00:00.000Z");
     expect(await store.session("expired")).toBeNull();
   });
+  it("blocks unchanged inaccessible re-analysis and enables it only after a changed description", async () => {
+    const saved = await store.save(
+      alice,
+      {
+        original_url: "https://www.instagram.com/reel/missing/",
+        normalized_url: "https://www.instagram.com/reel/missing/",
+        platform: "instagram",
+      },
+      null,
+    );
+    await store.update(alice, saved.id, {
+      processing_status: "limited",
+      indexing_note: "Content unavailable",
+    });
+    expect(await store.claimIndex(alice, saved.id)).toBeNull();
+    expect(
+      await store.edit(bob, saved.id, {
+        title: "Stolen",
+        note: "Stolen",
+        tags: [],
+      }),
+    ).toBeNull();
+    const edited = await store.edit(alice, saved.id, {
+      title: "My recipe",
+      note: "Tomato pasta with basil",
+      tags: ["weeknight"],
+    });
+    expect(edited?.reanalyze).toBe(true);
+    expect(edited?.item.title_edited).toBe(1);
+    expect(edited?.item.tags_edited).toBe(1);
+    expect((await store.get(alice, saved.id))?.user_note).toBe(
+      "Tomato pasta with basil",
+    );
+    expect(await store.claimIndex(alice, saved.id)).not.toBeNull();
+    await expect(
+      store.edit(alice, saved.id, { title: "Busy", note: "Changed", tags: [] }),
+    ).rejects.toThrow("ANALYSIS_BUSY");
+    await store.update(alice, saved.id, {
+      processing_status: "limited",
+      ai_processed_at: new Date().toISOString(),
+    });
+    const titleOnly = await store.edit(alice, saved.id, {
+      title: "Updated title",
+      note: "Tomato pasta with basil",
+      tags: ["weeknight"],
+    });
+    expect(titleOnly?.reanalyze).toBe(false);
+    expect(await store.claimIndex(alice, saved.id)).toBeNull();
+    await store.delete(alice, saved.id);
+  });
   it("enforces daily AI limits independently from keyword reads", async () => {
     for (let i = 0; i < 5; i++)
       expect(await store.aiQuota(alice, "save")).toBe(true);
@@ -98,6 +148,71 @@ describe.sequential("Private persistent SQLite libraries", () => {
     expect(await store.delete(alice, itemId)).toBe(true);
     expect(await store.get(alice, itemId)).toBeNull();
   });
+  it("keeps legacy WhatsApp links under Websites after removing that source segment", async () => {
+    const saved = await store.save(
+      alice,
+      {
+        original_url: "https://wa.me/12345",
+        normalized_url: "https://wa.me/12345",
+        platform: "whatsapp",
+      },
+      null,
+    );
+    expect(saved.platform).toBe("website");
+    expect(
+      (await store.list(alice, "website")).some(
+        (item) => item.id === saved.id && item.platform === "website",
+      ),
+    ).toBe(true);
+    await store.delete(alice, saved.id);
+  });
+  it("persists private custom tags and tag selections made while saving", async () => {
+    expect(await store.addTag(alice, "pitch deck")).toContain("pitch deck");
+    expect(await store.tagCatalog(bob)).not.toContain("pitch deck");
+    const saved = await store.save(
+      alice,
+      {
+        original_url: "https://example.com/pitch",
+        normalized_url: "https://example.com/pitch",
+        platform: "website",
+      },
+      null,
+      null,
+      ["pitch deck"],
+    );
+    expect(saved.tags).toEqual(["pitch deck"]);
+    expect(saved.tags_edited).toBe(1);
+    expect(await new Store(client).tagCatalog(alice)).toContain("pitch deck");
+    await store.delete(alice, saved.id);
+  });
+});
+
+it("upgrades existing saved links once without losing their original URLs or custom titles", async () => {
+  const legacy = createClient({ url: `file:${join(directory, "legacy.db")}` });
+  try {
+    await legacy.batch(
+      [
+        "CREATE TABLE users(id TEXT PRIMARY KEY,username TEXT UNIQUE,password_hash TEXT)",
+        "INSERT INTO users VALUES('owner','legacy','hash')",
+        `CREATE TABLE saved_items(id TEXT PRIMARY KEY,user_id TEXT,original_url TEXT,normalized_url TEXT,platform TEXT,title TEXT,description TEXT,summary TEXT,category TEXT,tags TEXT DEFAULT '[]',source_text TEXT,metadata_level TEXT DEFAULT 'none',indexing_note TEXT,processing_status TEXT DEFAULT 'limited',processing_started_at TEXT,ai_processed_at TEXT,created_at TEXT,updated_at TEXT,UNIQUE(user_id,normalized_url))`,
+        "INSERT INTO saved_items(id,user_id,original_url,normalized_url,platform,title) VALUES('legacy','owner','https://instagram.com/reels/abc/?igsh=old','https://instagram.com/reels/abc/','instagram','My original title')",
+      ],
+      "write",
+    );
+    const upgraded = new Store(legacy);
+    const item = await upgraded.get("owner", "legacy");
+    expect(item?.original_url).toContain("igsh=old");
+    expect(item?.title).toBe("My original title");
+    expect(item?.user_note).toBeNull();
+    expect(item?.title_edited).toBe(1);
+    expect(item?.processing_status).toBe("pending");
+    await upgraded.update("owner", "legacy", { processing_status: "limited" });
+    expect(
+      (await new Store(legacy).get("owner", "legacy"))?.processing_status,
+    ).toBe("limited");
+  } finally {
+    legacy.close();
+  }
 });
 it("hashes passwords with independent salts and verifies securely", async () => {
   const a = await hashPassword("a-strong-password"),

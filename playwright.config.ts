@@ -7,7 +7,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   // A fresh Next.js development route compiles on its first CI visit.
-  expect: { timeout: 15000 },
+  expect: { timeout: 30000 },
   use: {
     baseURL: external || "http://localhost:3001",
     trace: "retain-on-failure",

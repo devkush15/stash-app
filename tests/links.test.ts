@@ -62,8 +62,8 @@ describe("URL validation and normalization", () => {
     ["instagram.com", "instagram"],
     ["mobile.twitter.com", "x"],
     ["x.com", "x"],
-    ["wa.me", "whatsapp"],
-    ["web.whatsapp.com", "whatsapp"],
+    ["wa.me", "website"],
+    ["web.whatsapp.com", "website"],
     ["youtube.com.evil.test", "website"],
     ["notinstagram.com", "website"],
   ])("detects %s without spoofable substring checks", (host, platform) =>
@@ -79,7 +79,7 @@ describe("Search and pagination", () => {
   it("validates page and source query parameters", () => {
     expect(
       libraryParams({ page: "-1", source: "unknown", q: "  saved  " }),
-    ).toEqual({ page: 1, platform: "all", q: "saved" });
+    ).toEqual({ page: 1, platform: "all", q: "saved", tag: "" });
     expect(libraryParams({ page: "Infinity", q: ["one", "two"] }).page).toBe(1);
     expect(libraryParams({ page: "1.5" }).page).toBe(1);
     expect(libraryParams({ q: "a".repeat(201) }).q).toHaveLength(200);
@@ -91,12 +91,46 @@ describe("Search and pagination", () => {
   it("uses only supplied titles and URLs for display", () => {
     expect(
       linkTitle({ title: null, original_url: "https://www.example.com/notes" }),
-    ).toBe("example.com/notes");
+    ).toBe("example.com");
     expect(displayUrl("https://example.com/?id=1#page")).toBe(
       "example.com?id=1#page",
     );
     expect(
       linkTitle({ title: "My title", original_url: "https://example.com" }),
     ).toBe("My title");
+  });
+});
+
+describe("Instagram permalinks", () => {
+  it.each([
+    "https://instagram.com/reels/DgBKi6_oSbx/?utm_source=ig_web_copy_link&igsh=abc#tracking",
+    "http://m.instagram.com/reel/DgBKi6_oSbx",
+    "https://www.instagram.com/food.recipes.daily/reel/DgBKi6_oSbx/",
+  ])("canonicalizes %s without losing its shortcode", (url) => {
+    const link = parseLink(url);
+    expect(link.normalized_url).toBe(
+      "https://www.instagram.com/reel/DgBKi6_oSbx/",
+    );
+    expect(link.original_url).toBe(link.normalized_url);
+  });
+  it("uses compact post and Reel fallbacks, including old tracked saves", () => {
+    expect(
+      linkTitle({
+        title: null,
+        original_url: "https://www.instagram.com/p/abc/?utm_source=test",
+      }),
+    ).toBe("Instagram post");
+    expect(
+      linkTitle({
+        title: "https://www.instagram.com/reels/abc/?igsh=long",
+        original_url: "https://www.instagram.com/reels/abc/?igsh=long",
+      }),
+    ).toBe("Instagram Reel");
+    expect(
+      linkTitle({
+        title: "My pasta idea",
+        original_url: "https://www.instagram.com/reel/abc/",
+      }),
+    ).toBe("My pasta idea");
   });
 });

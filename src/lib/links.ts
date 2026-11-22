@@ -2,18 +2,41 @@ import type { Platform } from "./database.types";
 
 export const MAX_URL_LENGTH = 2048;
 export const MAX_TITLE_LENGTH = 200;
+export const MAX_NOTE_LENGTH = 1000;
 export const PAGE_SIZE = 24;
 export const sources: { value: Platform | "all"; label: string }[] = [
   { value: "all", label: "All links" },
   { value: "youtube", label: "YouTube" },
   { value: "instagram", label: "Instagram" },
   { value: "x", label: "X / Twitter" },
-  { value: "whatsapp", label: "WhatsApp" },
   { value: "website", label: "Websites" },
 ];
 
 function matchesHost(host: string, domain: string) {
   return host === domain || host.endsWith(`.${domain}`);
+}
+
+export function instagramUrl(input: string) {
+  try {
+    const url = new URL(input);
+    if (!matchesHost(url.hostname.toLowerCase(), "instagram.com")) return null;
+    const match = url.pathname.match(
+      /^\/(?:[^/]+\/)?(p|reel|reels|tv)\/([A-Za-z0-9_-]+)\/?$/,
+    );
+    if (!match) return null;
+    const kind = match[1] === "reels" ? "reel" : match[1];
+    return {
+      url: `https://www.instagram.com/${kind}/${match[2]}/`,
+      kind,
+      id: match[2],
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function originalLink(item: { original_url: string }) {
+  return instagramUrl(item.original_url)?.url || item.original_url;
 }
 
 export function detectPlatform(host: string): Platform {
@@ -26,8 +49,6 @@ export function detectPlatform(host: string): Platform {
     return "youtube";
   if (matchesHost(host, "instagram.com")) return "instagram";
   if (["x.com", "twitter.com"].some((d) => matchesHost(host, d))) return "x";
-  if (["whatsapp.com", "wa.me"].some((d) => matchesHost(host, d)))
-    return "whatsapp";
   return "website";
 }
 
@@ -63,6 +84,14 @@ export function parseLink(input: unknown) {
       normalized.searchParams.delete(key);
   }
   normalized.searchParams.sort();
+  const instagram = instagramUrl(url.href);
+  if (instagram) {
+    return {
+      original_url: instagram.url,
+      normalized_url: instagram.url,
+      platform: "instagram" as const,
+    };
+  }
   // Common YouTube sharing URLs should deduplicate with their watch-page URL.
   if (
     matchesHost(normalized.hostname, "youtu.be") &&
@@ -99,7 +128,24 @@ export function linkTitle(item: {
   title: string | null;
   original_url: string;
 }) {
-  return item.title?.trim() || displayUrl(item.original_url);
+  const title = item.title?.trim();
+  const instagram = instagramUrl(item.original_url);
+  if (
+    instagram &&
+    (!title ||
+      /^(?:https?:\/\/|(?:www\.)?instagram\.com\/)/i.test(title) ||
+      /^instagram(?: post| reel)?$/i.test(title))
+  )
+    return instagram.kind === "reel" ? "Instagram Reel" : "Instagram post";
+  if (title) return title;
+  try {
+    const host = new URL(item.original_url).hostname;
+    return detectPlatform(host) === "instagram"
+      ? "Instagram link"
+      : host.replace(/^www\./, "");
+  } catch {
+    return "Saved link";
+  }
 }
 
 export function escapeLike(value: string) {
@@ -112,6 +158,7 @@ export function libraryParams(
   const single = (value: string | string[] | undefined) =>
     typeof value === "string" ? value : "";
   const q = single(params.q).trim().slice(0, 200);
+  const tag = single(params.tag).trim().toLowerCase().slice(0, 40);
   const source = single(params.source);
   const platform = sources.some((s) => s.value === source)
     ? (source as Platform | "all")
@@ -119,13 +166,14 @@ export function libraryParams(
   const rawPage = Number(single(params.page));
   const page =
     Number.isSafeInteger(rawPage) && rawPage > 0 ? Math.min(rawPage, 10000) : 1;
-  return { q, platform, page };
+  return { q, platform, page, tag };
 }
 
-export function libraryHref(q: string, platform: string, page = 1) {
+export function libraryHref(q: string, platform: string, page = 1, tag = "") {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   if (platform !== "all") params.set("source", platform);
   if (page > 1) params.set("page", String(page));
+  if (tag) params.set("tag", tag);
   return `/library${params.size ? `?${params}` : ""}`;
 }

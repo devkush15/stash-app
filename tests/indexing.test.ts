@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { fetchableUrl, publicAddress, parseHtml } from "../src/lib/extract";
+import {
+  fetchableUrl,
+  publicAddress,
+  parseHtml,
+  parseInstagramHtml,
+} from "../src/lib/extract";
 import { organizationResult, rankedResults } from "../src/lib/ai";
 import { keywordSearch } from "../src/lib/search";
 import type { SavedItem } from "../src/lib/database.types";
@@ -14,6 +19,27 @@ const base = {
   original_url: "https://example.com/pasta",
 } as SavedItem;
 describe("Bounded public extraction", () => {
+  it("reads Instagram public metadata without indexing the page shell or pretending to view video", () => {
+    const data = parseInstagramHtml(
+      '<meta property="og:title" content="Creator on Instagram: &quot;Tomato pasta&quot;"><meta property="og:description" content="A caption excerpt about tomato pasta"><body>Login navigation and video player text</body>',
+    );
+    expect(data).toEqual({
+      title: "Tomato pasta",
+      description: "A caption excerpt about tomato pasta",
+      text: "",
+      level: "metadata",
+    });
+    expect(
+      parseInstagramHtml(
+        "<title>Instagram</title><body>Lots of login shell text</body>",
+      ).level,
+    ).toBe("none");
+    expect(
+      parseInstagramHtml(
+        '<meta property="og:title" content="Instagram"><meta property="og:description" content="Log in to see photos and videos">',
+      ).level,
+    ).toBe("none");
+  });
   it.each([
     "127.0.0.1",
     "10.0.0.1",
@@ -105,5 +131,23 @@ describe("Honest organization and search", () => {
       base,
     ]);
     expect(keywordSearch([base], "That article about AI startups")).toEqual([]);
+  });
+  it("searches user descriptions even when the original content is inaccessible", () => {
+    expect(
+      keywordSearch(
+        [
+          {
+            ...base,
+            title: "Instagram Reel",
+            summary: null,
+            tags: [],
+            category: null,
+            source_text: null,
+            user_note: "A quick tomato pasta recipe with basil",
+          },
+        ],
+        "Find the basil recipe I saved.",
+      ),
+    ).toHaveLength(1);
   });
 });

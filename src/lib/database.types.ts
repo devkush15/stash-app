@@ -1,4 +1,4 @@
-export type Platform = "youtube" | "instagram" | "x" | "whatsapp" | "website";
+export type Platform = "youtube" | "instagram" | "x" | "website";
 export type ProcessingStatus =
   | "saved"
   | "pending"
@@ -15,6 +15,9 @@ export type SavedItem = {
   platform: Platform;
   title: string | null;
   description: string | null;
+  user_note: string | null;
+  title_edited: number;
+  tags_edited: number;
   processing_status: ProcessingStatus;
   created_at: string;
   updated_at: string;

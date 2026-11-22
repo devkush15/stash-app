@@ -84,7 +84,9 @@ test("register, save, persist, search, isolate, delete, logout and login", async
   await page.getByLabel("Username", { exact: true }).fill(username);
   await page.getByLabel("Password", { exact: true }).fill("incorrect-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "incorrect" })).toBeVisible();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "incorrect" }),
+  ).toBeVisible();
   expect((await a.request.get("/api/items")).status()).toBe(401);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();

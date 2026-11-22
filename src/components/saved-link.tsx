@@ -2,39 +2,63 @@
 
 import { useState, useTransition } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { ExternalLink, Trash2, LoaderCircle } from "lucide-react";
+import { ExternalLink, Pencil, Trash2, LoaderCircle } from "lucide-react";
 import { api } from "@/lib/client-api";
 import { SourceIcon } from "./source-icon";
-import { displayUrl, linkTitle, sources } from "@/lib/links";
+import { LinkDialog } from "./link-dialog";
+import { originalLink, linkTitle, sources } from "@/lib/links";
 import type { SavedItem } from "@/lib/database.types";
 
 export function SavedLink({
   item,
   onDeleted,
+  onEdited,
   onAnalyze,
   analyzing = false,
+  tagOptions = [],
 }: {
   item: SavedItem;
   onDeleted: () => void;
+  onEdited?: (item: SavedItem, reanalyze: boolean) => void;
   onAnalyze?: (id: string) => void;
   analyzing?: boolean;
+  tagOptions?: string[];
 }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const title = linkTitle(item);
   const source =
     sources.find((s) => s.value === item.platform)?.label || "Website";
-  const date = new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(item.created_at));
+  const needsDescription =
+    item.processing_status === "limited" &&
+    !item.ai_processed_at &&
+    !item.user_note;
+  const retry =
+    !item.ai_processed_at &&
+    ["pending", "failed", "deferred"].includes(item.processing_status) &&
+    (item.processing_status === "pending" ||
+      item.metadata_level !== "none" ||
+      Boolean(item.user_note));
+  const status = analyzing
+    ? "Analyzing…"
+    : needsDescription
+      ? "Add description"
+      : item.processing_status === "limited"
+        ? item.user_note
+          ? "From your description"
+          : "Metadata only"
+        : item.processing_status === "deferred"
+          ? "AI deferred"
+          : item.processing_status === "failed"
+            ? "Analysis unavailable"
+            : "";
   return (
     <article className="saved-link" data-testid="saved-link">
       <a
         className="saved-link-main"
-        href={item.original_url}
+        href={originalLink(item)}
         target="_blank"
         rel="noopener noreferrer"
         aria-label={`Open ${title} (opens in a new tab)`}
@@ -55,37 +79,30 @@ export function SavedLink({
         <h2 className="card-title" dir="auto" title={title}>
           {title}
         </h2>
-        <p className="card-url" title={item.original_url} dir="auto">
-          {displayUrl(item.original_url)}
-        </p>
-        {item.summary && <p className="card-summary">{item.summary}</p>}
-        {item.category && (
-          <span className="card-category">{item.category}</span>
-        )}
-        {item.tags.length > 0 && (
-          <div className="card-tags">
-            {item.tags.map((tag) => (
-              <span key={tag}>#{tag}</span>
-            ))}
-          </div>
-        )}
       </a>
-      {item.processing_status !== "ready" && (
-        <div className="index-status">
-          <span title={item.indexing_note || undefined}>
-            {analyzing
-              ? "Analyzing…"
-              : item.processing_status === "limited"
-                ? "Limited indexing"
-                : item.processing_status === "pending"
-                  ? "Ready to analyze"
-                  : item.processing_status === "deferred"
-                    ? "Link saved · AI deferred"
-                    : item.processing_status === "failed"
-                      ? "Analysis unavailable"
-                      : "Link saved"}
-          </span>
-          {!item.ai_processed_at && onAnalyze && (
+      <div className="card-footer">
+        <div className="card-details">
+          {item.category && (
+            <span className="card-category">{item.category}</span>
+          )}
+          {status &&
+            (needsDescription ? (
+              <button
+                className="card-status status-action"
+                onClick={() => setEditing(true)}
+              >
+                {status}
+              </button>
+            ) : (
+              <span
+                className="card-status"
+                role="status"
+                title={item.indexing_note || undefined}
+              >
+                {status}
+              </span>
+            ))}
+          {retry && onAnalyze && (
             <button
               className="analyze-button"
               disabled={analyzing}
@@ -103,99 +120,103 @@ export function SavedLink({
             </button>
           )}
         </div>
-      )}
-      {item.processing_status === "limited" && item.indexing_note && (
-        <p className="index-note">{item.indexing_note}</p>
-      )}
-      <div className="card-footer">
-        <span className="card-saved">
-          Saved{" "}
-          <time
-            dateTime={item.created_at}
-            title={new Date(item.created_at).toISOString()}
+        <div className="card-actions">
+          <button
+            className="icon-button"
+            aria-label={`Edit ${title}`}
+            disabled={analyzing}
+            onClick={() => setEditing(true)}
           >
-            {date}
-          </time>
-        </span>
-        <Dialog.Root
-          open={open}
-          onOpenChange={(value) => {
-            if (!pending) {
-              setOpen(value);
-              setError("");
-            }
-          }}
-        >
-          <Dialog.Trigger
-            className="icon-button delete-trigger"
-            aria-label={`Delete ${title}`}
+            <Pencil size={15} aria-hidden="true" />
+          </button>
+          <Dialog.Root
+            open={open}
+            onOpenChange={(value) => {
+              if (!pending) {
+                setOpen(value);
+                setError("");
+              }
+            }}
           >
-            <Trash2 size={16} aria-hidden="true" />
-          </Dialog.Trigger>
-          <Dialog.Portal>
-            <Dialog.Backdrop className="dialog-backdrop" />
-            <Dialog.Viewport className="dialog-viewport">
-              <Dialog.Popup className="dialog-popup delete-popup">
-                <Dialog.Title className="dialog-title">
-                  Delete this link?
-                </Dialog.Title>
-                <Dialog.Description className="dialog-description">
-                  It will be removed from your Stash. The original stays where
-                  it is.
-                </Dialog.Description>
-                <p className="delete-link-title" dir="auto">
-                  {title}
-                </p>
-                {error && (
-                  <p className="error-message" role="alert">
-                    {error}
+            <Dialog.Trigger
+              className="icon-button delete-trigger"
+              aria-label={`Delete ${title}`}
+            >
+              <Trash2 size={16} aria-hidden="true" />
+            </Dialog.Trigger>
+            <Dialog.Portal>
+              <Dialog.Backdrop className="dialog-backdrop" />
+              <Dialog.Viewport className="dialog-viewport">
+                <Dialog.Popup className="dialog-popup delete-popup">
+                  <Dialog.Title className="dialog-title">
+                    Delete this link?
+                  </Dialog.Title>
+                  <Dialog.Description className="dialog-description">
+                    It will be removed from your Stash. The original stays where
+                    it is.
+                  </Dialog.Description>
+                  <p className="delete-link-title" dir="auto">
+                    {title}
                   </p>
-                )}
-                <div className="dialog-actions">
-                  <Dialog.Close
-                    className="button button-secondary"
-                    disabled={pending}
-                  >
-                    Keep link
-                  </Dialog.Close>
-                  <button
-                    className="button button-danger"
-                    disabled={pending}
-                    onClick={() =>
-                      startTransition(async () => {
-                        try {
-                          await api(`/api/items/${item.id}`, {
-                            method: "DELETE",
-                          });
-                          {
+                  {error && (
+                    <p className="error-message" role="alert">
+                      {error}
+                    </p>
+                  )}
+                  <div className="dialog-actions">
+                    <Dialog.Close
+                      className="button button-secondary"
+                      disabled={pending}
+                    >
+                      Keep link
+                    </Dialog.Close>
+                    <button
+                      className="button button-danger"
+                      disabled={pending}
+                      onClick={() =>
+                        startTransition(async () => {
+                          try {
+                            await api(`/api/items/${item.id}`, {
+                              method: "DELETE",
+                            });
                             setOpen(false);
                             onDeleted();
+                          } catch (error) {
+                            setError(
+                              error instanceof Error
+                                ? error.message
+                                : "Couldn’t delete this link.",
+                            );
                           }
-                        } catch (error) {
-                          setError(
-                            error instanceof Error
-                              ? error.message
-                              : "Couldn’t delete this link.",
-                          );
-                        }
-                      })
-                    }
-                  >
-                    {pending && (
-                      <LoaderCircle
-                        className="spinner"
-                        size={16}
-                        aria-hidden="true"
-                      />
-                    )}
-                    {pending ? "Deleting…" : "Delete link"}
-                  </button>
-                </div>
-              </Dialog.Popup>
-            </Dialog.Viewport>
-          </Dialog.Portal>
-        </Dialog.Root>
+                        })
+                      }
+                    >
+                      {pending && (
+                        <LoaderCircle
+                          className="spinner"
+                          size={16}
+                          aria-hidden="true"
+                        />
+                      )}
+                      {pending ? "Deleting…" : "Delete link"}
+                    </button>
+                  </div>
+                </Dialog.Popup>
+              </Dialog.Viewport>
+            </Dialog.Portal>
+          </Dialog.Root>
+        </div>
       </div>
+      <LinkDialog
+        key={`${item.id}:${item.updated_at}`}
+        item={item}
+        tagOptions={tagOptions}
+        open={editing}
+        onOpenChange={setEditing}
+        onSaved={(updated, reanalyze) =>
+          onEdited?.(updated, Boolean(reanalyze))
+        }
+      />
     </article>
   );
 }

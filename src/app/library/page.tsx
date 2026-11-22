@@ -11,12 +11,19 @@ export default async function LibraryPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { user } = await requireUser();
-  const { q, platform, page } = libraryParams(await searchParams);
+  const { q, platform, page, tag } = libraryParams(await searchParams);
   let items: import("@/lib/database.types").SavedItem[] = [];
   let error = false;
+  let tags: string[] = [];
   try {
-    const all = await db().list(user.id, platform);
-    items = q ? keywordSearch(all, q) : all;
+    const all = await db().list(user.id);
+    tags = await db().tagCatalog(user.id, all);
+    const filtered = all.filter(
+      (item) =>
+        (platform === "all" || item.platform === platform) &&
+        (!tag || item.tags.includes(tag)),
+    );
+    items = q ? keywordSearch(filtered, q) : filtered;
   } catch {
     error = true;
   }
@@ -29,6 +36,8 @@ export default async function LibraryPage({
       platform={platform}
       page={page}
       error={error}
+      tags={tags}
+      tag={tag}
     />
   );
 }

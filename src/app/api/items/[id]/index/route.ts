@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
 import { isAiConfigured } from "@/lib/env";
+import { originalLink } from "@/lib/links";
 import { organize } from "@/lib/ai";
-import { extractContent } from "@/lib/extract";
+import { extractContent, type Extracted } from "@/lib/extract";
 import { apiError, apiUser, HttpError, json, sameOrigin } from "@/lib/http";
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -19,12 +20,31 @@ export async function POST(
     const item = await store.claimIndex(user.id, id);
     if (!item) return json({ item: owned });
     try {
-      const content = await extractContent(item.original_url, item.platform);
+      const publicContent: Extracted =
+        item.metadata_level !== "none"
+          ? {
+              title: item.title_edited ? null : item.title,
+              description: item.description,
+              text: item.source_text || "",
+              level: item.metadata_level,
+            }
+          : item.indexing_note && item.user_note
+            ? { title: null, description: null, text: "", level: "none" }
+            : await extractContent(originalLink(item), item.platform);
+      const content: Extracted = {
+        ...publicContent,
+        title: item.title_edited ? item.title : publicContent.title,
+        userNote: item.user_note || undefined,
+        level:
+          publicContent.level === "none" && item.user_note
+            ? "metadata"
+            : publicContent.level,
+      };
       const metadata = {
-        title: item.title || content.title,
-        description: content.description,
-        source_text: content.text,
-        metadata_level: content.level,
+        title: item.title_edited ? item.title : publicContent.title,
+        description: publicContent.description,
+        source_text: publicContent.text,
+        metadata_level: publicContent.level,
       };
       await store.update(user.id, id, metadata);
       if (content.level === "none")
@@ -33,7 +53,7 @@ export async function POST(
             ...metadata,
             processing_status: "limited",
             indexing_note:
-              "Content could not be accessed. The original link is saved.",
+              "Content could not be accessed. Add a description to organize this link.",
           }),
         });
       if (!isAiConfigured())
@@ -58,12 +78,15 @@ export async function POST(
         item: await store.update(user.id, id, {
           ...metadata,
           ...organized,
-          title: item.title || organized.title,
+          title: item.title_edited ? item.title : organized.title,
+          tags: item.tags_edited ? item.tags : organized.tags,
           ai_processed_at: new Date().toISOString(),
           processing_status: content.level === "metadata" ? "limited" : "ready",
           indexing_note:
             content.level === "metadata"
-              ? "Only public metadata was available. Full content was not analyzed."
+              ? item.user_note
+                ? "Organized using your description and available metadata. Full content was not analyzed."
+                : "Only public metadata was available. Full content was not analyzed."
               : null,
         }),
       });

@@ -82,7 +82,7 @@ export function organizationResult(value: unknown, content: Extracted) {
 }
 export async function organize(content: Extracted) {
   const result = await generateJson(
-    'Organize the supplied public content. Return {"title":string,"summary":string|null,"category":string,"tags":string[]}. Use a concise title, one short category, 3–6 useful tags, and a factual summary of at most 3 sentences based solely on the supplied text. If level is metadata, set summary to null: a title/author does not reveal video or article contents. If text is inadequate do not guess.',
+    'Organize the supplied public content and optional userNote. Return {"title":string,"summary":string|null,"category":string,"tags":string[]}. Use a concise title, one short category, 3–6 useful tags, and a factual summary of at most 3 sentences based solely on supplied public text. userNote is the user\'s own description, not a verified source caption; prioritize its specific context for title, category and tags without claiming to have viewed the post. If level is metadata, set summary to null: metadata and user notes do not reveal full video or article contents. Do not invent facts, captions, transcripts, or details absent from the supplied content.',
     content,
   );
   return organizationResult(result, content);
@@ -128,6 +128,7 @@ export async function semanticSearch(query: string, items: SavedItem[]) {
       category: i.category,
       tags: i.tags,
       description: i.description?.slice(0, 150),
+      userNote: i.user_note?.slice(0, 500),
     })),
   });
   while (candidates.length && Buffer.byteLength(JSON.stringify(data())) > 20000)
