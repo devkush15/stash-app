@@ -25,6 +25,12 @@ export function TagPicker({
     [value, setValue] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const available = [...new Set([...options, ...selected])];
+  const visible =
+    single && !expanded
+      ? available.filter((tag, index) => index < 8 || selected.includes(tag))
+      : available;
   async function create() {
     const tag = value.trim().toLowerCase().replace(/\s+/g, " ");
     if (!tag) return;
@@ -39,6 +45,7 @@ export function TagPicker({
       else onChange([...new Set([...selected, tag])]);
       setValue("");
       setAdding(false);
+      setExpanded(true);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Couldn’t add tag.");
     } finally {
@@ -58,7 +65,7 @@ export function TagPicker({
             All
           </button>
         )}
-        {[...new Set([...options, ...selected])].map((tag) => (
+        {visible.map((tag) => (
           <button
             type="button"
             key={tag}
@@ -76,6 +83,17 @@ export function TagPicker({
             {tagLabel(tag)}
           </button>
         ))}
+        {single && available.length > 8 && (
+          <button
+            type="button"
+            className="tag-pill"
+            aria-expanded={expanded}
+            aria-label={expanded ? "Show fewer tags" : "Show all tags"}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? "Less" : "More"}
+          </button>
+        )}
         <button
           type="button"
           className="tag-pill tag-add"

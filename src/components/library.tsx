@@ -51,6 +51,10 @@ export function Library({
   const [extraTags, setExtraTags] = useState<string[]>([]);
   const tagOptions = [
     ...new Set([
+      ...initialItems
+        .map((item) => item.tags[0])
+        .filter((value): value is string => Boolean(value))
+        .sort((a, b) => a.localeCompare(b)),
       ...tags,
       ...extraTags,
       ...initialItems.flatMap((item) => item.tags),
