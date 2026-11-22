@@ -178,7 +178,7 @@ export function libraryParams(
     : "newest";
   const view = ["all", "tags", "categories"].includes(single(params.view))
     ? single(params.view)
-    : "all";
+    : "tags";
   const category = single(params.category).trim().slice(0, 50);
   const source = single(params.source);
   const platform = sources.some((s) => s.value === source)
@@ -205,7 +205,7 @@ export function libraryHref(
     params.append("tag", value);
   if (options.sort && options.sort !== "newest")
     params.set("sort", options.sort);
-  if (options.view && options.view !== "all") params.set("view", options.view);
+  if (options.view && options.view !== "tags") params.set("view", options.view);
   if (options.category) params.set("category", options.category);
   return `/library${params.size ? `?${params}` : ""}`;
 }

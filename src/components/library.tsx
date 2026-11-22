@@ -50,7 +50,7 @@ export function Library({
   tag = "",
   selectedTags = tag ? [tag] : [],
   sort = "newest",
-  view = "all",
+  view = "tags",
   category = "",
   categories = [],
   customTags = [],
@@ -315,7 +315,7 @@ export function Library({
                 disabled={!ready || pending}
                 defaultValue={view}
               >
-                <option value="all">All links</option>
+                <option value="all">Ungrouped</option>
                 <option value="categories">Group by category</option>
                 <option value="tags">Group by tag</option>
               </select>
@@ -428,7 +428,6 @@ export function Library({
             <section className="link-section" key={name}>
               {view !== "all" && (
                 <div className={`section-heading tag-tone-${tagTone(name)}`}>
-                  <span className="tag-dot" />
                   <h2>{tagLabel(name)}</h2>
                   <span>{links.length}</span>
                 </div>
@@ -441,19 +440,6 @@ export function Library({
                     analyzing={analyzing.includes(item.id)}
                     onAnalyze={analyze}
                     tagOptions={catalog}
-                    onTag={(value) =>
-                      start(() =>
-                        router.push(
-                          href(
-                            q,
-                            platform,
-                            selectedTags.includes(value)
-                              ? selectedTags.filter((t) => t !== value)
-                              : [...selectedTags, value].slice(0, 8),
-                          ),
-                        ),
-                      )
-                    }
                     onEdited={(updated, reanalyze) => {
                       refresh("Link updated.");
                       if (reanalyze) void analyze(updated.id);

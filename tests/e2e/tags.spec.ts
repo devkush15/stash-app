@@ -71,7 +71,7 @@ test("capture, multi-tag filtering, grouping, rename/delete, sorting and Ask fal
   await page.getByRole("button", { name: "Save link", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "My pitch reference", exact: true }),
-  ).toBeVisible();
+  ).not.toHaveCount(0);
   // Tags created in capture must be manageable without a full page reload.
   await expect(
     page
@@ -102,7 +102,13 @@ test("capture, multi-tag filtering, grouping, rename/delete, sorting and Ask fal
   });
   expect(second.status()).toBe(201);
   await page.reload();
-  await expect(page.getByTestId("saved-link")).toHaveCount(2);
+  await expect(page.getByTestId("saved-link")).toHaveCount(3);
+  await expect(
+    page.getByRole("heading", { name: "Pitch Deck", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Marketing", exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("navigation", { name: "Your tags", exact: true })
     .getByRole("link", { name: "Pitch Deck", exact: true })
@@ -113,12 +119,13 @@ test("capture, multi-tag filtering, grouping, rename/delete, sorting and Ask fal
     .getByRole("navigation", { name: "Library organization", exact: true })
     .getByRole("link", { name: "All links", exact: true })
     .click();
-  await expect(page.getByTestId("saved-link")).toHaveCount(2);
+  await expect(page.getByTestId("saved-link")).toHaveCount(3);
   await page.getByLabel("Sort by", { exact: true }).selectOption("title");
   await expect(
     page.getByTestId("saved-link").first().getByRole("heading"),
   ).toHaveText("Marketing reference");
   await page.getByRole("button", { name: "Filters", exact: true }).click();
+  await page.getByLabel("View", { exact: true }).selectOption("all");
   await page.getByRole("checkbox", { name: "Pitch Deck", exact: true }).check();
   await page
     .getByRole("button", { name: "Apply filters", exact: true })

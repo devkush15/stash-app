@@ -27,10 +27,8 @@ test("Instagram fallback, canonical duplicates, editing and description search",
       "https://instagram.com/reels/StashMissing2026/?utm_source=copy&igsh=tracking",
     );
   await page.getByRole("button", { name: "Save link", exact: true }).click();
-  const card = page.getByTestId("saved-link");
-  await expect(card.getByRole("heading")).toHaveText(
-    "Name this Instagram Reel",
-  );
+  const card = page.getByTestId("saved-link").first();
+  await expect(card.getByRole("heading")).toHaveText("Instagram Reel");
   await expect(
     card.getByRole("button", { name: "Add a note", exact: true }),
   ).toBeVisible();
@@ -76,6 +74,7 @@ test("Instagram fallback, canonical duplicates, editing and description search",
   await page.reload();
   await page
     .getByRole("button", { name: "Actions for Dinner idea", exact: true })
+    .first()
     .click();
   await page.getByRole("menuitem", { name: "Edit link", exact: true }).click();
   await expect(page.getByLabel("Notes Optional")).toHaveValue(

@@ -26,10 +26,38 @@ for (const width of [320, 390, 768, 1440]) {
         ).toBeVisible();
       else {
         expect(await page.getByTestId("saved-link").count()).toBe(
-          data === "one" ? 1 : data === "worst" ? 6 : 3,
+          data === "one" ? 1 : data === "worst" ? 13 : 3,
         );
         const cardLinks = page.getByTestId("saved-link").getByRole("link");
         expect(await cardLinks.first().getAttribute("target")).toBe("_blank");
+        await expect(page.locator(".entry-domain, .entry-tags")).toHaveCount(0);
+        await expect(
+          page.getByText("Public metadata only", { exact: true }),
+        ).toHaveCount(0);
+        expect(
+          await page
+            .locator(".link-list")
+            .first()
+            .evaluate(
+              (element) =>
+                getComputedStyle(element).gridTemplateColumns.split(" ").length,
+            ),
+        ).toBe(width >= 1200 ? 3 : width >= 640 ? 2 : 1);
+        if (width >= 1200 && data === "demo") {
+          const positions = await page
+            .getByTestId("saved-link")
+            .evaluateAll((elements) =>
+              elements.map((element) => ({
+                x: element.getBoundingClientRect().x,
+                y: element.getBoundingClientRect().y,
+              })),
+            );
+          expect(
+            new Set(positions.map((position) => Math.round(position.y))).size,
+          ).toBe(1);
+          expect(positions[0].x).toBeLessThan(positions[1].x);
+          expect(positions[1].x).toBeLessThan(positions[2].x);
+        }
         await page
           .getByRole("button", { name: /^Actions for / })
           .first()
@@ -138,7 +166,7 @@ for (const width of [320, 1440]) {
       .getByRole("button", { name: "Switch to dark mode", exact: true })
       .click();
     const contrast = await page
-      .locator(".entry-tags .tag-pill")
+      .locator(".section-heading h2")
       .first()
       .evaluate((element) => {
         const style = getComputedStyle(element);
@@ -156,7 +184,10 @@ for (const width of [320, 1440]) {
           );
         };
         const text = luminance(style.color),
-          background = luminance(style.backgroundColor);
+          background = luminance(
+            getComputedStyle(document.querySelector(".workspace-shell")!)
+              .backgroundColor,
+          );
         return (
           (Math.max(text, background) + 0.05) /
           (Math.min(text, background) + 0.05)

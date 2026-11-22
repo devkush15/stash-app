@@ -50,6 +50,9 @@ export default async function Preview({
     ),
     base(3, "Worth keeping", "https://instagram.com/p/example", "instagram"),
   ];
+  demo[1].metadata_level = "metadata";
+  demo[1].processing_status = "limited";
+  demo[1].ai_processed_at = "2026-11-20T12:00:00Z";
   const stress = [
     base(
       1,

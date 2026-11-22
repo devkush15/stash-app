@@ -11,7 +11,7 @@ People save useful links across platforms, then lose the context needed to find 
 
 ## Information architecture
 
-- **Library** — default All Links, search, source and tag filters, newest/oldest/title sort; optional category grouping. All Links renders each database record once. Grouping can repeat a link under its tags without duplicating the stored item. Items without context have an explicit Uncategorized group.
+- **Library** — All Links defaults to sections grouped by saved tags, with three compact cards per row on wide desktops, two on tablets and one on phones. Search, source/tag filters and newest/oldest/title sort remain available. A link with multiple tags can appear in each corresponding section while its stored record remains unique; an explicit Ungrouped view provides a single-entry inventory. Items without context have an explicit Uncategorized group.
 - **Ask Stash** — a separate, clearly named destination for questions and natural-language retrieval. Answer and references stay together. Empty libraries, no relevant evidence, exhausted capacity and inaccessible content have explicit states.
 - **Add Link** — a shared dialog accessible from both destinations. Paste URL, optionally edit the title, add notes and choose/create tags. Saving persists the link before indexing.
 - **Secondary actions** — item overflow menu for edit/delete; a lightweight tag dialog for create/rename/delete. Deleting a tag removes its assignments, never its links.
@@ -20,8 +20,8 @@ Library and Ask remain peer tabs. The sidebar keeps the established branding and
 
 ## Tradeoffs and rationale
 
-- Default to an ungrouped list for a complete, nonduplicated inventory. Grouped browsing is an explicit view choice, not an inferred primary-tag hierarchy.
-- Show an editable title first, a small clickable original second, notes only when present, and actual tags. Compact rows preserve readable separation. Restricted Instagram links invite a title or personal note instead of implying the source was analyzed; available user notes can supply a truthful provisional title. Extraction states distinguish unavailable public content, metadata-only indexing and organization from notes. Retry organization is offered only when useful information exists.
+- Default to tag sections so organization is visible immediately. Reuse actual saved tags, retain an Uncategorized section, and offer Ungrouped in Filters for a unique flat inventory.
+- Make the title itself open the original source, including honest Instagram fallback titles. Remove repeated URL lines, per-card tag chips and successful metadata-only labels; section headings communicate tags. Notes appear only when present. Titles and tags remain editable through the item menu. Loading/errors and inaccessible-source note actions remain visible, with extraction details in Edit.
 - Keep user-selected tags authoritative. AI supplies useful organization when public information is accessible; restricted sources keep their original URL and manual context.
 - Separate free Library search from quota-limited Ask. A question never silently changes the meaning of ordinary search.
 - Ask uses bounded retrieval over existing SQLite records and one existing Gemini call for grounded selection/answers. No vectors, workers, extra database, paid API or new hosting.

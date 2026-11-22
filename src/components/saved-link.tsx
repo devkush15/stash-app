@@ -10,7 +10,6 @@ import {
   LoaderCircle,
   MoreHorizontal,
 } from "lucide-react";
-import { tagLabel, tagTone } from "./tag-picker";
 import { useClientReady } from "@/lib/use-client-ready";
 import { api } from "@/lib/client-api";
 import { SourceIcon } from "./source-icon";
@@ -25,7 +24,6 @@ export function SavedLink({
   onAnalyze,
   analyzing = false,
   tagOptions = [],
-  onTag,
 }: {
   item: SavedItem;
   onDeleted: () => void;
@@ -33,7 +31,6 @@ export function SavedLink({
   onAnalyze?: (id: string) => void;
   analyzing?: boolean;
   tagOptions?: string[];
-  onTag?: (tag: string) => void;
 }) {
   const ready = useClientReady();
   const [open, setOpen] = useState(false);
@@ -41,15 +38,7 @@ export function SavedLink({
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const title = linkTitle(item);
-  const target = originalLink(item),
-    url = new URL(target),
-    originalLabel =
-      url.hostname.replace(/^www\./, "") +
-      (item.platform === "website" ? "" : url.pathname.replace(/\/$/, ""));
-  const needsTitle =
-    item.platform === "instagram" &&
-    !item.title_edited &&
-    /^Instagram(?: post| reel| link)?$/i.test(title);
+  const target = originalLink(item);
   const working = analyzing || item.processing_status === "processing";
   const source =
     sources.find((s) => s.value === item.platform)?.label || "Website";
@@ -69,9 +58,7 @@ export function SavedLink({
     : needsDescription
       ? "Public content unavailable"
       : item.processing_status === "limited"
-        ? item.user_note
-          ? "Organized from your notes"
-          : "Public metadata only"
+        ? ""
         : item.processing_status === "deferred"
           ? "Organization deferred · link saved"
           : item.processing_status === "failed"
@@ -83,74 +70,23 @@ export function SavedLink({
         <SourceIcon platform={item.platform} />
       </div>
       <div className="entry-content">
-        {needsTitle ? (
-          <h3 className="card-title title-placeholder">
-            <button
-              className="title-edit-button"
-              disabled={!ready || working}
-              onClick={() => setEditing(true)}
-            >
-              Name this {title} <Pencil size={13} aria-hidden="true" />
-            </button>
-          </h3>
-        ) : (
-          <a
-            className="entry-title"
-            href={target}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Open ${title} (opens in a new tab)`}
-          >
-            <h3 className="card-title" dir="auto" title={title}>
-              {title}
-            </h3>
-            <ExternalLink size={14} aria-hidden="true" />
-          </a>
-        )}
         <a
-          className="entry-domain"
+          className="entry-title"
           href={target}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={`Open original ${source} link (opens in a new tab)`}
-          title={target}
+          aria-label={`Open ${title} (opens in a new tab)`}
         >
-          {originalLabel === title
-            ? "Open original"
-            : originalLabel.length > 52
-              ? originalLabel.slice(0, 49) + "…"
-              : originalLabel}
+          <h3 className="card-title" dir="auto" title={title}>
+            {title}
+          </h3>
+          <ExternalLink size={14} aria-hidden="true" />
         </a>
         {item.user_note && (
           <p className="entry-note" title={item.user_note} dir="auto">
             <span>Your note · </span>
             {item.user_note}
           </p>
-        )}
-        {item.tags.length > 0 && (
-          <div className="entry-tags">
-            {item.tags.slice(0, 3).map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                className={`tag-pill compact tag-tone-${tagTone(tag)}`}
-                disabled={!ready}
-                onClick={() => onTag?.(tag)}
-              >
-                {tagLabel(tag)}
-              </button>
-            ))}
-            {item.tags.length > 3 && (
-              <button
-                className="tag-overflow"
-                disabled={!ready}
-                onClick={() => setEditing(true)}
-                aria-label={`View all ${item.tags.length} tags for ${title}`}
-              >
-                +{item.tags.length - 3}
-              </button>
-            )}
-          </div>
         )}
         {status && (
           <span

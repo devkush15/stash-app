@@ -72,6 +72,14 @@ describe("URL validation and normalization", () => {
 });
 
 describe("Search and pagination", () => {
+  it("defaults to tag sections and preserves an explicit ungrouped view", () => {
+    expect(libraryParams({}).view).toBe("tags");
+    expect(libraryHref("", "all", 1, [], { view: "all" })).toBe(
+      "/library?view=all",
+    );
+    expect(libraryParams({ view: "all" }).view).toBe("all");
+    expect(libraryHref("", "all", 1, [], { view: "tags" })).toBe("/library");
+  });
   it("escapes SQL pattern characters as literal search text", () =>
     expect(escapeLike("100%_\\done,(title)='x'")).toBe(
       "100\\%\\_\\\\done,(title)='x'",
