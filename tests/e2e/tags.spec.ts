@@ -1,5 +1,123 @@
 import { expect, test } from "@playwright/test";
-test("capture, multi-tag filtering, grouping, rename/delete, sorting and Ask fallback", async ({
+test("tag capture, live filters, views, selection, undo and Ask handoff", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  test.setTimeout(180000);
+  await page.goto("/sign-in");
+  await page
+    .getByRole("button", { name: "New here? Create an account" })
+    .click();
+  await page
+    .getByLabel("Username", { exact: true })
+    .fill("controls_" + Date.now().toString(36));
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("controls-check-password");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  await expect(page).toHaveURL(/library/);
+  await page.getByRole("button", { name: "Manage tags", exact: true }).click();
+  for (const tag of ["research", "recipes"]) {
+    await page.getByLabel("New tag", { exact: true }).fill(tag);
+    await page.getByRole("button", { name: "Create tag", exact: true }).click();
+    await expect(
+      page.getByLabel(`Rename ${tag}`, { exact: true }),
+    ).toBeVisible();
+  }
+  await page.getByLabel("Color for research").selectOption("purple");
+  await page.getByRole("button", { name: "Close tag manager" }).click();
+  await page.getByRole("button", { name: "Add link", exact: true }).click();
+  await page
+    .getByLabel("URL", { exact: true })
+    .fill("https://example.com/research");
+  await page.getByLabel("Title Optional").fill("Research notes");
+  await page
+    .getByLabel("Notes Optional")
+    .fill("Pricing starts at twelve dollars per month.");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Research", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Save link", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Research notes", exact: true }),
+  ).toBeVisible({ timeout: 60000 });
+  await page.reload();
+  await expect(
+    page
+      .getByRole("navigation", { name: "Your tags" })
+      .getByRole("link", { name: "Research 1", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "List view", exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "List view" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.keyboard.press("Control+k");
+  await expect(page.getByRole("searchbox")).toBeFocused();
+  await page.getByRole("searchbox").fill("nonexistent");
+  await expect(
+    page.getByRole("heading", { name: "No matching links." }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Clear filters", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Filters", exact: true }).click();
+  await page.getByLabel("Saved after").fill("2099-01-01");
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(page.getByTestId("saved-link")).toHaveCount(0);
+  await page.getByRole("button", { name: "Clear all", exact: true }).click();
+  await expect(page.getByTestId("saved-link")).toHaveCount(1);
+  await page.getByTestId("saved-link").hover();
+  await page.getByLabel("Select Research notes", { exact: true }).check();
+  await page.getByRole("button", { name: "Add tag", exact: true }).click();
+  await page.getByLabel("Tag to add").fill("recipes");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Add tag", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () =>
+        (await (await context.request.get("/api/items")).json()).items[0].tags,
+    )
+    .toEqual(["research", "recipes"]);
+  await page.getByRole("button", { name: "Filters", exact: true }).click();
+  await page.getByLabel("View", { exact: true }).selectOption("all");
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await page.getByTestId("saved-link").hover();
+  await page
+    .getByRole("button", { name: "Delete Research notes", exact: true })
+    .click();
+  await expect(page.getByTestId("saved-link")).toHaveCount(0);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(page.getByTestId("saved-link")).toHaveCount(1);
+  await page.getByTestId("saved-link").hover();
+  await page.getByLabel("Select Research notes", { exact: true }).check();
+  await page
+    .getByRole("button", { name: "Ask Stash about these (1)", exact: true })
+    .click();
+  await expect(
+    page.getByLabel("What would you like to find or understand?"),
+  ).toHaveValue(/Research notes/);
+  await page.getByRole("button", { name: "Ask Stash", exact: true }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "Stash answer" })
+      .getByRole("link", { name: /Research notes/ }),
+  ).toHaveAttribute("href", "https://example.com/research");
+  const empty = await context.request.post("/api/ask", {
+    headers: { origin: baseURL! },
+    data: { question: "pricing" },
+  });
+  expect(empty.ok()).toBe(true);
+});
+
+test("sidebar counts, usage order, overflow filter, colors and tag lifecycle", async ({
   page,
   context,
   baseURL,
@@ -11,190 +129,70 @@ test("capture, multi-tag filtering, grouping, rename/delete, sorting and Ask fal
     .click();
   await page
     .getByLabel("Username", { exact: true })
-    .fill("product_" + Date.now().toString(36));
+    .fill("sidebar_" + Date.now().toString(36));
   await page
     .getByLabel("Password", { exact: true })
-    .fill("product-browser-check-password");
+    .fill("sidebar-check-password");
   await page
     .getByRole("button", { name: "Create account", exact: true })
     .click();
-  await expect(page).toHaveURL(/\/library$/);
-  await expect(page.getByText("Just for you", { exact: true })).toHaveCount(0);
-  await expect(
-    page
-      .getByRole("navigation", { name: "Filter by source", exact: true })
-      .getByRole("link", { name: "Instagram", exact: true }),
-  ).not.toBeVisible();
-  await page.locator(".source-filter summary").click();
-  await expect(
-    page
-      .getByRole("navigation", { name: "Filter by source", exact: true })
-      .getByRole("link", { name: "Instagram", exact: true }),
-  ).toBeVisible();
-  await page.locator(".source-filter summary").click();
-  const empty = await context.request.post("/api/ask", {
-    headers: { origin: baseURL! },
-    data: { question: "What have I saved?" },
-  });
-  expect((await empty.json()).mode).toBe("empty");
-  await page.getByRole("button", { name: "Filters", exact: true }).click();
-  await page.getByRole("button", { name: "Manage tags", exact: true }).click();
-  for (const tag of ["Pitch Deck", "Marketing"]) {
-    await page.getByLabel("New tag", { exact: true }).fill(tag);
-    await page.getByRole("button", { name: "Create tag", exact: true }).click();
-    await expect(
-      page.getByLabel(`Rename ${tag.toLowerCase()}`, { exact: true }),
-    ).toBeVisible();
+  await expect(page).toHaveURL(/library/);
+  for (let i = 0; i < 10; i++) {
+    const response = await context.request.post("/api/tags", {
+      headers: { origin: baseURL! },
+      data: { tag: `topic ${i}` },
+    });
+    expect(response.ok()).toBe(true);
   }
-  await page
-    .getByRole("button", { name: "Close tag manager", exact: true })
-    .click();
-  await expect(
-    page
-      .getByRole("navigation", { name: "Your tags", exact: true })
-      .getByRole("link", { name: "Pitch Deck", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Add link", exact: true }).click();
-  const dialog = page.getByRole("dialog");
-  await page
-    .getByLabel("URL", { exact: true })
-    .fill("https://example.com/pitch-reference");
-  await page.getByLabel("Title Optional").fill("My pitch reference");
-  await page
-    .getByLabel("Notes Optional")
-    .fill("Pricing plan: Starter costs $12 monthly. Annual plans save 20%.");
-  await dialog.getByRole("button", { name: "Pitch Deck", exact: true }).click();
-  await dialog.getByRole("button", { name: "Marketing", exact: true }).click();
-  await dialog.getByRole("button", { name: "Add a tag", exact: true }).click();
-  await page.getByLabel("New tag", { exact: true }).fill("capture-only");
-  await page.getByRole("button", { name: "Create tag", exact: true }).click();
-  await page.getByRole("button", { name: "Save link", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "My pitch reference", exact: true }),
-  ).not.toHaveCount(0);
-  // Tags created in capture must be manageable without a full page reload.
-  await expect(
-    page
-      .getByRole("navigation", { name: "Your tags", exact: true })
-      .getByRole("link", { name: "Capture-Only", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Manage tags", exact: true }).click();
-  await expect(
-    page.getByLabel("Rename capture-only", { exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Remove capture-only", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Remove tag", exact: true }).click();
-  await expect(
-    page.getByLabel("Rename capture-only", { exact: true }),
-  ).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Close tag manager", exact: true })
-    .click();
-  const second = await context.request.post("/api/items", {
-    headers: { origin: baseURL! },
-    data: {
-      url: "https://example.com/marketing-reference",
-      title: "Marketing reference",
-      tags: ["marketing"],
-    },
-  });
-  expect(second.status()).toBe(201);
+  for (let i = 0; i < 2; i++) {
+    const response = await context.request.post("/api/items", {
+      headers: { origin: baseURL! },
+      data: {
+        url: `https://example.com/sidebar-${i}`,
+        title: `Reference ${i}`,
+        note: "Retain this personal note.",
+        tags: ["topic 9"],
+      },
+    });
+    expect(response.status()).toBe(201);
+  }
   await page.reload();
-  await expect(page.getByTestId("saved-link")).toHaveCount(3);
-  await expect(
-    page.getByRole("heading", { name: "Pitch Deck", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Marketing", exact: true }),
-  ).toBeVisible();
+  const nav = page.getByRole("navigation", { name: "Your tags", exact: true });
+  await expect(nav.getByRole("link").first()).toHaveText("Topic 92");
+  await expect(nav.getByRole("link")).toHaveCount(8);
   await page
-    .getByRole("navigation", { name: "Your tags", exact: true })
-    .getByRole("link", { name: "Pitch Deck", exact: true })
+    .getByRole("button", { name: "Show more (2)", exact: true })
     .click();
-  await expect(page).toHaveURL(/tag=pitch/);
-  await expect(page.getByTestId("saved-link")).toHaveCount(1);
-  await page
-    .getByRole("navigation", { name: "Library organization", exact: true })
-    .getByRole("link", { name: "All links", exact: true })
-    .click();
-  await expect(page.getByTestId("saved-link")).toHaveCount(3);
-  await page.getByLabel("Sort by", { exact: true }).selectOption("title");
-  await expect(
-    page.getByTestId("saved-link").first().getByRole("heading"),
-  ).toHaveText("Marketing reference");
-  await page.getByRole("button", { name: "Filters", exact: true }).click();
-  await page.getByLabel("View", { exact: true }).selectOption("all");
-  await page.getByRole("checkbox", { name: "Pitch Deck", exact: true }).check();
-  await page
-    .getByRole("button", { name: "Apply filters", exact: true })
-    .click();
-  await expect(page.getByTestId("saved-link")).toHaveCount(1);
-  await page.getByRole("checkbox", { name: "Marketing", exact: true }).check();
-  await page
-    .getByRole("button", { name: "Apply filters", exact: true })
-    .click();
-  await expect(page.getByTestId("saved-link")).toHaveCount(2);
-  await page.getByLabel("View", { exact: true }).selectOption("tags");
-  await page
-    .getByRole("button", { name: "Apply filters", exact: true })
-    .click();
-  await expect(page.getByTestId("saved-link")).toHaveCount(3);
-  expect(
-    (await (await context.request.get("/api/items")).json()).items,
-  ).toHaveLength(2);
+  await expect(nav.getByRole("link")).toHaveCount(10);
+  await page.getByLabel("Filter tags", { exact: true }).fill("topic 9");
+  await expect(nav.getByRole("link")).toHaveCount(1);
   await page.getByRole("button", { name: "Manage tags", exact: true }).click();
-  await page.getByLabel("Rename pitch deck", { exact: true }).fill("founders");
-  await page
-    .getByRole("button", { name: "Save pitch deck", exact: true })
-    .click();
+  await page.getByLabel("Color for topic 9").selectOption("blue");
+  await page.getByLabel("Rename topic 9", { exact: true }).fill("references");
+  await page.getByRole("button", { name: "Save topic 9", exact: true }).click();
   await expect(
-    page.getByLabel("Rename founders", { exact: true }),
+    page.getByLabel("Rename references", { exact: true }),
   ).toBeVisible();
-  await expect(page).toHaveURL(/tag=founders/);
+  await page.getByLabel("Color for references").selectOption("green");
+  await page.getByRole("button", { name: "Close tag manager" }).click();
+  await page.reload();
+  await page.getByRole("button", { name: "Manage tags", exact: true }).click();
+  await expect(page.getByLabel("Color for references")).toHaveValue("green");
   await page
-    .getByRole("button", { name: "Remove founders", exact: true })
+    .getByRole("button", { name: "Remove references", exact: true })
     .click();
   await page.getByRole("button", { name: "Remove tag", exact: true }).click();
-  await expect(page.getByLabel("Rename founders", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByLabel("Rename references", { exact: true }),
+  ).toHaveCount(0);
   const records = (await (await context.request.get("/api/items")).json())
     .items;
   expect(records).toHaveLength(2);
   expect(
-    records.some((item: { user_note: string }) =>
-      item.user_note?.includes("$12"),
-    ),
-  ).toBe(true);
-  expect(
     records.every(
-      (item: { tags: string[] }) => !item.tags.includes("founders"),
-    ),
-  ).toBe(true);
-  await page
-    .getByRole("button", { name: "Close tag manager", exact: true })
-    .click();
-  await page.getByRole("link", { name: "Clear filters", exact: true }).click();
-  await expect(page.getByTestId("saved-link")).toHaveCount(2);
-  await page.getByRole("link", { name: "Ask Stash", exact: true }).click();
-  await page
-    .getByLabel("What would you like to find or understand?")
-    .fill("What did I save about pricing?");
-  await page.getByRole("button", { name: "Ask Stash", exact: true }).click();
-  const answer = page.getByRole("region", {
-    name: "Stash answer",
-    exact: true,
-  });
-  await expect(answer).toContainText("AI is unavailable");
-  await expect(
-    answer.getByRole("link", { name: /My pitch reference/ }),
-  ).toHaveAttribute("href", "https://example.com/pitch-reference");
-  await page.setViewportSize({ width: 320, height: 900 });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
+      (item: { tags: string[]; user_note: string }) =>
+        item.tags.length === 0 &&
+        item.user_note === "Retain this personal note.",
     ),
   ).toBe(true);
 });

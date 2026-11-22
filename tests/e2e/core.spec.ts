@@ -64,13 +64,19 @@ test("register, save, persist, search, isolate, delete, logout and login", async
   expect((await (await b.request.get("/api/items")).json()).items).toHaveLength(
     0,
   );
+  await page.getByTestId("saved-link").hover();
   await page
-    .getByRole("button", { name: "Actions for Pasta recipe", exact: true })
+    .getByRole("button", { name: "Delete Pasta recipe", exact: true })
     .click();
-  await page
-    .getByRole("menuitem", { name: "Delete link", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Delete link", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Undo", exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(
+      async () =>
+        (await (await a.request.get("/api/items")).json()).items.length,
+    )
+    .toBe(0);
   await expect(page.getByTestId("saved-link")).toHaveCount(0);
   await page.reload();
   await expect(page.getByTestId("saved-link")).toHaveCount(0);

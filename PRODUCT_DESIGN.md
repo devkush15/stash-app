@@ -50,3 +50,9 @@ Use the installed prototype skill on **primary navigation only**, in an isolated
 Validate actual rendered screens with empty/one/many records, 200-character titles, 1,000-character notes, eight 40-character tags, missing metadata, non-Latin text and emoji. The existing dev-only Demo/Worst case toggle must not ship. Check 320/390/768/1440px, 200% text and reduced motion; physical phone keyboard/safe-area behavior must be reported separately from browser emulation.
 
 Acceptance: all five flows work against persistent storage; tag changes preserve ownership and data; Ask cites only retrieved saved items; no account can see another account's records; lint, types, tests, production build and the existing GitHub→Vercel deployment pass.
+
+## Library controls refinement
+
+The Library uses a centered 1200px content area, 1/2/3/4 columns at 640/1024/1440px, and browser-persisted Grid/List/Compact modes. Tags show whole-library usage counts, top eight by usage, a filter for longer lists, and explicitly chosen browser-local colors (neutral by default). Search/filter/date chips update locally over the existing private item endpoint. Source filters live in the popover; appearance lives in the profile menu.
+
+Cards support keyboard/touch-accessible quick actions and selection. Bulk tags use existing per-item update routes and preserve notes; partial failures are reported. Delete hides links immediately with a six-second cancellation window, then calls existing delete routes; navigation commits pending deletion. No model/API/schema changes. Ask selection is a presentation filter on returned claims/sources, with selected titles in the prefilled question; the unchanged Ask endpoint still retrieves across the private library. Strict selected-only retrieval needs a future backend change. Display preferences and tag colors are local to the browser.

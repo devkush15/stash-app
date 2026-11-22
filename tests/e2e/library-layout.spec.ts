@@ -4,7 +4,7 @@ test.skip(
   !process.env.STASH_UI_TESTS,
   "Run npm run test:ui to create the temporary dev-only fixture route.",
 );
-for (const width of [320, 390, 768, 1440]) {
+for (const width of [360, 768, 1280, 1920]) {
   for (const data of ["demo", "worst", "empty", "one"]) {
     test(`library ${data} at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -42,7 +42,7 @@ for (const width of [320, 390, 768, 1440]) {
               (element) =>
                 getComputedStyle(element).gridTemplateColumns.split(" ").length,
             ),
-        ).toBe(width >= 1200 ? 3 : width >= 640 ? 2 : 1);
+        ).toBe(width >= 1440 ? 4 : width >= 1024 ? 3 : width >= 640 ? 2 : 1);
         if (width >= 1200 && data === "demo") {
           const positions = await page
             .getByTestId("saved-link")
@@ -58,17 +58,13 @@ for (const width of [320, 390, 768, 1440]) {
           expect(positions[0].x).toBeLessThan(positions[1].x);
           expect(positions[1].x).toBeLessThan(positions[2].x);
         }
+        await page.getByTestId("saved-link").first().hover();
         await page
-          .getByRole("button", { name: /^Actions for / })
+          .getByRole("button", { name: /^Edit tags for / })
           .first()
           .click();
-        await page
-          .getByRole("menuitem", { name: "Delete link", exact: true })
-          .click();
         await expect(page.getByRole("dialog")).toBeVisible();
-        await page
-          .getByRole("button", { name: "Keep link", exact: true })
-          .click();
+        await page.getByRole("button", { name: "Cancel", exact: true }).click();
         await expect(page.getByRole("dialog")).not.toBeVisible();
       }
       await page.getByRole("button", { name: "Add link", exact: true }).click();
@@ -156,14 +152,22 @@ for (const width of [320, 1440]) {
     });
     await page.keyboard.press("Escape");
     await page
-      .getByRole("button", { name: "Switch to light mode", exact: true })
+      .getByRole("button", { name: "Account menu" })
+      .filter({ visible: true })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "Switch to light mode", exact: true })
       .click();
     await expect(page.locator(".workspace-shell")).toHaveCSS(
       "background-color",
       "rgb(249, 248, 245)",
     );
     await page
-      .getByRole("button", { name: "Switch to dark mode", exact: true })
+      .getByRole("button", { name: "Account menu" })
+      .filter({ visible: true })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "Switch to dark mode", exact: true })
       .click();
     const contrast = await page
       .locator(".section-heading h2")

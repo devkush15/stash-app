@@ -72,11 +72,11 @@ test("Instagram fallback, canonical duplicates, editing and description search",
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(card.getByRole("heading")).toHaveText("Dinner idea");
   await page.reload();
+  await page.getByTestId("saved-link").first().hover();
   await page
-    .getByRole("button", { name: "Actions for Dinner idea", exact: true })
+    .getByRole("button", { name: "Edit Dinner idea", exact: true })
     .first()
     .click();
-  await page.getByRole("menuitem", { name: "Edit link", exact: true }).click();
   await expect(page.getByLabel("Notes Optional")).toHaveValue(
     "My reminder to cook tomato pasta with basil for dinner.",
   );
