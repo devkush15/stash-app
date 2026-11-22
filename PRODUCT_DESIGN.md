@@ -22,6 +22,7 @@ Library and Ask remain peer tabs. The sidebar keeps the established branding and
 
 - Default to tag sections so organization is visible immediately. Reuse actual saved tags, retain an Uncategorized section, and offer Ungrouped in Filters for a unique flat inventory.
 - Make the title itself open the original source, including honest Instagram fallback titles. Remove repeated URL lines, per-card tag chips and successful metadata-only labels; section headings communicate tags. Notes appear only when present. Titles and tags remain editable through the item menu. Loading/errors and inaccessible-source note actions remain visible, with extraction details in Edit.
+- Give each tag section a small uppercase heading and a grid of softly bordered, rounded cards. Platform logos sit in pale purple circles; optional notes stay beneath clickable titles. Use three columns on wide desktops, two on tablets and one on phones, with matching dark surfaces.
 - Keep user-selected tags authoritative. AI supplies useful organization when public information is accessible; restricted sources keep their original URL and manual context.
 - Separate free Library search from quota-limited Ask. A question never silently changes the meaning of ordinary search.
 - Ask uses bounded retrieval over existing SQLite records and one existing Gemini call for grounded selection/answers. No vectors, workers, extra database, paid API or new hosting.
