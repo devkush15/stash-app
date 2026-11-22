@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { ChevronDown, LogOut, UserRound } from "lucide-react";
 import { useClientReady } from "@/lib/use-client-ready";
+import { ThemeToggle } from "./theme-toggle";
 import { api } from "@/lib/client-api";
 
 export function AccountMenu({ email }: { email: string }) {
@@ -38,6 +39,7 @@ export function AccountMenu({ email }: { email: string }) {
           >
             <Menu.Popup className="menu-popup">
               <div className="menu-email">{email}</div>
+              <ThemeToggle menu />
               <Menu.Item
                 className="menu-item"
                 onClick={() =>

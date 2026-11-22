@@ -1,27 +1,21 @@
 "use client";
 import Link from "next/link";
-import {
-  Plus,
-  LibraryBig,
-  MessageCircle,
-  ChevronDown,
-  Tags,
-} from "lucide-react";
+import { Plus, LibraryBig, Sparkles, Tags } from "lucide-react";
 import { useClientReady } from "@/lib/use-client-ready";
 import { Brand } from "./brand";
 import { AccountMenu } from "./account-menu";
-import { ThemeToggle } from "./theme-toggle";
+import { useState } from "react";
+import { usePreference, tagColors } from "./display-preferences";
 import { SourceIcon } from "./source-icon";
-import { tagLabel, tagTone } from "./tag-picker";
-import { libraryHref, sources } from "@/lib/links";
+import { tagLabel } from "./tag-picker";
+import { libraryHref } from "@/lib/links";
 import type { Platform } from "@/lib/database.types";
 export function WorkspaceShell({
   active,
   email,
   onAdd,
   children,
-  source = "all",
-  sourceHref,
+  tagCounts = {},
   customTags = [],
   selectedTags = [],
   tagHref,
@@ -31,6 +25,7 @@ export function WorkspaceShell({
   email: string;
   onAdd: () => void;
   children: React.ReactNode;
+  tagCounts?: Record<string, number>;
   source?: Platform | "all";
   sourceHref?: (source: Platform | "all") => string;
   customTags?: string[];
@@ -39,6 +34,14 @@ export function WorkspaceShell({
   onManageTags: () => void;
 }) {
   const ready = useClientReady();
+  const [expanded, setExpanded] = useState(false);
+  const [query, setQuery] = useState("");
+  const sorted = [...customTags].sort(
+    (a, b) => (tagCounts[b] || 0) - (tagCounts[a] || 0) || a.localeCompare(b),
+  );
+  const visible = sorted.filter((tag) =>
+    tag.toLowerCase().includes(query.toLowerCase()),
+  );
   return (
     <div className="workspace-shell">
       <a className="skip-link" href="#workspace-content">
@@ -64,23 +67,44 @@ export function WorkspaceShell({
               <span>All links</span>
             </Link>
           </nav>
-          <div className="sidebar-label rail-tags-label">Your tags</div>
+          <div className="rail-tags-header">
+            <span>Your tags</span>
+            <button
+              className="icon-button"
+              aria-label="Manage tags"
+              title="Manage tags"
+              onClick={onManageTags}
+              disabled={!ready}
+            >
+              <Tags size={16} />
+            </button>
+          </div>
+          {customTags.length > 8 && (
+            <input
+              className="input tag-find"
+              aria-label="Filter tags"
+              placeholder="Filter tags…"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          )}
           <nav className="source-nav rail-tags" aria-label="Your tags">
-            {customTags.map((tag) => (
+            {(expanded || query ? visible : visible.slice(0, 8)).map((tag) => (
               <Link
                 key={tag}
                 prefetch={false}
                 href={tagHref ? tagHref(tag) : libraryHref("", "all", 1, [tag])}
                 title={tagLabel(tag)}
-                className={`source-nav-link rail-tag tag-tone-${tagTone(tag)} ${active === "library" && selectedTags.includes(tag) ? "selected" : ""}`}
+                className={`source-nav-link rail-tag ${active === "library" && selectedTags.includes(tag) ? "selected" : ""}`}
                 aria-current={
                   active === "library" && selectedTags.includes(tag)
                     ? "page"
                     : undefined
                 }
               >
-                <span className="tag-dot" aria-hidden="true" />
+                <TagDot tag={tag} />
                 <span>{tagLabel(tag)}</span>
+                <span className="rail-tag-count">{tagCounts[tag] || 0}</span>
               </Link>
             ))}
           </nav>
@@ -89,44 +113,15 @@ export function WorkspaceShell({
               Create a tag to organize your links.
             </p>
           )}
-          <button
-            className="rail-manage-tags text-button"
-            onClick={onManageTags}
-            disabled={!ready}
-          >
-            <Tags size={16} aria-hidden="true" />
-            Manage tags
-          </button>
-          <details className="source-filter" open={source !== "all"}>
-            <summary>
-              <ChevronDown size={14} aria-hidden="true" />
-              Filter by source
-            </summary>
-            <nav className="source-nav" aria-label="Filter by source">
-              {sources.map((value) => (
-                <Link
-                  key={value.value}
-                  prefetch={false}
-                  href={
-                    sourceHref
-                      ? sourceHref(value.value)
-                      : libraryHref("", value.value)
-                  }
-                  className={`source-nav-link ${active === "library" && source === value.value ? "selected" : ""}`}
-                  aria-current={
-                    active === "library" && source === value.value
-                      ? "page"
-                      : undefined
-                  }
-                >
-                  <SourceIcon platform={value.value} />
-                  <span>
-                    {value.value === "all" ? "Any source" : value.label}
-                  </span>
-                </Link>
-              ))}
-            </nav>
-          </details>
+          {customTags.length > 8 && !query && (
+            <button
+              className="text-button show-tags"
+              onClick={() => setExpanded(!expanded)}
+              aria-expanded={expanded}
+            >
+              {expanded ? "Show less" : `Show more (${customTags.length - 8})`}
+            </button>
+          )}
         </div>
         <div className="source-rail-bottom">
           <AccountMenu email={email} />
@@ -146,15 +141,15 @@ export function WorkspaceShell({
               Library
             </Link>
             <Link
+              className="ask-tab"
               href="/ask"
               aria-current={active === "ask" ? "page" : undefined}
             >
-              <MessageCircle size={17} aria-hidden="true" />
+              <Sparkles size={17} aria-hidden="true" />
               Ask Stash
             </Link>
           </nav>
           <div className="workspace-actions">
-            <ThemeToggle />
             <button
               className="button button-primary"
               disabled={!ready}
@@ -175,5 +170,19 @@ export function WorkspaceShell({
         </main>
       </div>
     </div>
+  );
+}
+
+function TagDot({ tag }: { tag: string }) {
+  const [color] = usePreference(`stash-tag-color:${tag}`, "neutral");
+  return (
+    <span
+      className="tag-dot"
+      style={{
+        background:
+          tagColors[color as keyof typeof tagColors] || tagColors.neutral,
+      }}
+      aria-hidden="true"
+    />
   );
 }

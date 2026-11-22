@@ -1,5 +1,6 @@
 "use client";
 import { useSyncExternalStore } from "react";
+import { Menu } from "@base-ui/react/menu";
 import { Moon, Sun } from "lucide-react";
 import { applyTheme, THEME_KEY, type Theme } from "@/lib/theme";
 import { useClientReady } from "@/lib/use-client-ready";
@@ -22,14 +23,15 @@ function subscribe(notify: () => void) {
     window.removeEventListener("storage", storage);
   };
 }
-export function ThemeToggle() {
+export function ThemeToggle({ menu = false }: { menu?: boolean }) {
   const ready = useClientReady();
   const theme = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
   const label = `Switch to ${theme === "dark" ? "light" : "dark"} mode`;
+  const Control = menu ? Menu.Item : "button";
   return (
-    <button
+    <Control
       type="button"
-      className="icon-button theme-toggle"
+      className={menu ? "menu-item" : "icon-button theme-toggle"}
       disabled={!ready}
       aria-label={label}
       title={label}
@@ -40,6 +42,7 @@ export function ThemeToggle() {
       ) : (
         <Moon size={19} aria-hidden="true" />
       )}
-    </button>
+      {menu && label}
+    </Control>
   );
 }

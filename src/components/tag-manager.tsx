@@ -3,13 +3,16 @@ import { useState, useTransition } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Check, Plus, Trash2, X } from "lucide-react";
 import { api } from "@/lib/client-api";
-import { tagLabel, tagTone } from "./tag-picker";
+import { usePreference, tagColors } from "./display-preferences";
+import { tagLabel } from "./tag-picker";
 export function TagManager({
   open,
   onOpenChange,
   tags,
   onChanged,
+  onCatalog,
 }: {
+  onCatalog?: (tags: string[]) => void;
   open: boolean;
   onOpenChange: (value: boolean) => void;
   tags: string[];
@@ -30,6 +33,7 @@ export function TagManager({
           body: JSON.stringify(body),
         });
         setCatalog(result.tags);
+        onCatalog?.(result.tags);
         setDeleting(null);
         setMessage(
           method === "POST"
@@ -149,7 +153,7 @@ export function TagManager({
               {catalog.map((tag) => (
                 <form
                   key={tag}
-                  className={`tag-manager-row tag-tone-${tagTone(tag)}`}
+                  className="tag-manager-row"
                   onSubmit={(event) => {
                     event.preventDefault();
                     mutate("PATCH", {
@@ -158,7 +162,7 @@ export function TagManager({
                     });
                   }}
                 >
-                  <span className="tag-dot" />
+                  <TagColorPicker tag={tag} />
                   <input
                     className="input"
                     name="name"
@@ -196,5 +200,24 @@ export function TagManager({
         </Dialog.Viewport>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+function TagColorPicker({ tag }: { tag: string }) {
+  const [color, setColor] = usePreference(`stash-tag-color:${tag}`, "neutral");
+  return (
+    <select
+      className="tag-color-select"
+      aria-label={`Color for ${tag}`}
+      value={color}
+      onChange={(e) => setColor(e.target.value)}
+      style={{ color: tagColors[color as keyof typeof tagColors] }}
+    >
+      {Object.keys(tagColors).map((name) => (
+        <option key={name} value={name}>
+          {name}
+        </option>
+      ))}
+    </select>
   );
 }
