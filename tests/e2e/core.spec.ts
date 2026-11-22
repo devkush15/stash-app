@@ -16,7 +16,7 @@ test("register, save, persist, search, isolate, delete, logout and login", async
   browser,
   baseURL,
 }) => {
-  test.setTimeout(90000);
+  test.setTimeout(120000);
   const a = await browser.newContext({ baseURL }),
     b = await browser.newContext({ baseURL });
   const page = await a.newPage(),
@@ -36,7 +36,8 @@ test("register, save, persist, search, isolate, delete, logout and login", async
   await page.getByRole("button", { name: "Save link", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Pasta recipe", exact: true }),
-  ).toBeVisible();
+    // The first analysis route can compile alongside this refresh on a cold dev server.
+  ).toBeVisible({ timeout: 60000 });
   await page.reload();
   await expect(
     page.getByRole("heading", { name: "Pasta recipe", exact: true }),

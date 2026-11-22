@@ -6,8 +6,14 @@ export const metadata = { title: "Ask Stash" };
 export default async function AskPage() {
   const { user } = await requireUser();
   const items = await db().list(user.id);
-  const tags = await db().tagCatalog(user.id, items);
+  const customTags = await db().customTags(user.id, items);
+  const tags = await db().tagCatalog(user.id, items, customTags);
   return (
-    <AskStash email={user.username} tags={tags} hasContent={items.length > 0} />
+    <AskStash
+      email={user.username}
+      tags={tags}
+      customTags={customTags}
+      hasContent={items.length > 0}
+    />
   );
 }

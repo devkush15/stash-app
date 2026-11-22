@@ -2,7 +2,8 @@
 
 import { useRef, useState, useTransition } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { Link2, LoaderCircle, X } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/client-api";
 import { TagPicker } from "./tag-picker";
 import type { SavedItem } from "@/lib/database.types";
@@ -10,7 +11,6 @@ import {
   MAX_URL_LENGTH,
   MAX_TITLE_LENGTH,
   MAX_NOTE_LENGTH,
-  linkTitle,
   parseLink,
 } from "@/lib/links";
 
@@ -30,8 +30,11 @@ export function LinkDialog({
   defaultTags?: string[];
 }) {
   const [error, setError] = useState("");
+  const router = useRouter();
   const [selectedTags, setSelectedTags] = useState(item?.tags || defaultTags);
-  const [pending, startTransition] = useTransition();
+  const [submitting, startTransition] = useTransition();
+  const [creatingTag, setCreatingTag] = useState(false);
+  const pending = submitting || creatingTag;
   const formRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   return (
@@ -56,9 +59,9 @@ export function LinkDialog({
             }
           >
             <div className="dialog-header">
-              <span className="dialog-symbol">
-                <Link2 size={20} aria-hidden="true" />
-              </span>
+              <Dialog.Title className="dialog-title">
+                {item ? "Edit link" : "Add a link"}
+              </Dialog.Title>
               <Dialog.Close
                 className="icon-button"
                 aria-label="Close dialog"
@@ -67,9 +70,6 @@ export function LinkDialog({
                 <X size={20} aria-hidden="true" />
               </Dialog.Close>
             </div>
-            <Dialog.Title className="dialog-title">
-              {item ? "Edit link" : "Add a link"}
-            </Dialog.Title>
             <Dialog.Description
               className={item?.indexing_note ? "dialog-description" : "sr-only"}
             >
@@ -80,6 +80,7 @@ export function LinkDialog({
               ref={formRef}
               onSubmit={(event) => {
                 event.preventDefault();
+                if (pending) return;
                 const form = new FormData(event.currentTarget);
                 startTransition(async () => {
                   setError("");
@@ -141,18 +142,12 @@ export function LinkDialog({
                   Title <span className="optional">Optional</span>
                 </label>
                 <input
+                  ref={item ? inputRef : undefined}
                   className="input"
                   id="link-title"
                   name="title"
                   defaultValue={item?.title || ""}
-                  placeholder={
-                    item
-                      ? linkTitle({
-                          title: null,
-                          original_url: item.original_url,
-                        })
-                      : "Give it a name"
-                  }
+                  placeholder="What will you look for later?"
                   maxLength={MAX_TITLE_LENGTH}
                   disabled={pending}
                   enterKeyHint="done"
@@ -166,7 +161,7 @@ export function LinkDialog({
                   id="link-note"
                   name="note"
                   className="input"
-                  rows={3}
+                  rows={2}
                   maxLength={MAX_NOTE_LENGTH}
                   defaultValue={item?.user_note || ""}
                   placeholder="Add your context, or a caption you can access."
@@ -181,6 +176,21 @@ export function LinkDialog({
                   options={tagOptions}
                   selected={selectedTags}
                   onChange={setSelectedTags}
+                  onCreate={async (tag) => {
+                    setCreatingTag(true);
+                    try {
+                      await api("/api/tags", {
+                        method: "POST",
+                        body: JSON.stringify({ tag }),
+                      });
+                      setSelectedTags((values) => [
+                        ...new Set([...values, tag]),
+                      ]);
+                      router.refresh();
+                    } finally {
+                      setCreatingTag(false);
+                    }
+                  }}
                 />
               </fieldset>
               {error && (
@@ -207,7 +217,13 @@ export function LinkDialog({
                       aria-hidden="true"
                     />
                   )}
-                  {pending ? "Saving…" : item ? "Save changes" : "Save link"}
+                  {creatingTag
+                    ? "Adding tag…"
+                    : submitting
+                      ? "Saving…"
+                      : item
+                        ? "Save changes"
+                        : "Save link"}
                 </button>
               </div>
             </form>

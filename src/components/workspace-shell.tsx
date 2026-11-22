@@ -1,11 +1,18 @@
 "use client";
 import Link from "next/link";
-import { Plus, LibraryBig, MessageCircle } from "lucide-react";
+import {
+  Plus,
+  LibraryBig,
+  MessageCircle,
+  ChevronDown,
+  Tags,
+} from "lucide-react";
 import { useClientReady } from "@/lib/use-client-ready";
 import { Brand } from "./brand";
 import { AccountMenu } from "./account-menu";
 import { ThemeToggle } from "./theme-toggle";
 import { SourceIcon } from "./source-icon";
+import { tagLabel, tagTone } from "./tag-picker";
 import { libraryHref, sources } from "@/lib/links";
 import type { Platform } from "@/lib/database.types";
 export function WorkspaceShell({
@@ -15,6 +22,10 @@ export function WorkspaceShell({
   children,
   source = "all",
   sourceHref,
+  customTags = [],
+  selectedTags = [],
+  tagHref,
+  onManageTags,
 }: {
   active: "library" | "ask";
   email: string;
@@ -22,6 +33,10 @@ export function WorkspaceShell({
   children: React.ReactNode;
   source?: Platform | "all";
   sourceHref?: (source: Platform | "all") => string;
+  customTags?: string[];
+  selectedTags?: string[];
+  tagHref?: (tag: string) => string;
+  onManageTags: () => void;
 }) {
   const ready = useClientReady();
   return (
@@ -33,34 +48,87 @@ export function WorkspaceShell({
         <Link href="/library" className="brand-link">
           <Brand />
         </Link>
-        <div className="sidebar-label">Library</div>
-        <nav className="source-nav" aria-label="Sources">
-          {sources.map((value) => (
+        <div className="rail-content">
+          <nav className="source-nav" aria-label="Library organization">
             <Link
-              key={value.value}
+              href="/library"
               prefetch={false}
-              href={
-                sourceHref
-                  ? sourceHref(value.value)
-                  : libraryHref("", value.value)
-              }
-              className={`source-nav-link ${active === "library" && source === value.value ? "selected" : ""}`}
+              className={`source-nav-link ${active === "library" && !selectedTags.length ? "selected" : ""}`}
               aria-current={
-                active === "library" && source === value.value
+                active === "library" && !selectedTags.length
                   ? "page"
                   : undefined
               }
             >
-              <SourceIcon platform={value.value} />
-              <span>{value.label}</span>
+              <SourceIcon platform="all" />
+              <span>All links</span>
             </Link>
-          ))}
-        </nav>
+          </nav>
+          <div className="sidebar-label rail-tags-label">Your tags</div>
+          <nav className="source-nav rail-tags" aria-label="Your tags">
+            {customTags.map((tag) => (
+              <Link
+                key={tag}
+                prefetch={false}
+                href={tagHref ? tagHref(tag) : libraryHref("", "all", 1, [tag])}
+                title={tagLabel(tag)}
+                className={`source-nav-link rail-tag tag-tone-${tagTone(tag)} ${active === "library" && selectedTags.includes(tag) ? "selected" : ""}`}
+                aria-current={
+                  active === "library" && selectedTags.includes(tag)
+                    ? "page"
+                    : undefined
+                }
+              >
+                <span className="tag-dot" aria-hidden="true" />
+                <span>{tagLabel(tag)}</span>
+              </Link>
+            ))}
+          </nav>
+          {!customTags.length && (
+            <p className="rail-empty-tags">
+              Create a tag to organize your links.
+            </p>
+          )}
+          <button
+            className="rail-manage-tags text-button"
+            onClick={onManageTags}
+            disabled={!ready}
+          >
+            <Tags size={16} aria-hidden="true" />
+            Manage tags
+          </button>
+          <details className="source-filter" open={source !== "all"}>
+            <summary>
+              <ChevronDown size={14} aria-hidden="true" />
+              Filter by source
+            </summary>
+            <nav className="source-nav" aria-label="Filter by source">
+              {sources.map((value) => (
+                <Link
+                  key={value.value}
+                  prefetch={false}
+                  href={
+                    sourceHref
+                      ? sourceHref(value.value)
+                      : libraryHref("", value.value)
+                  }
+                  className={`source-nav-link ${active === "library" && source === value.value ? "selected" : ""}`}
+                  aria-current={
+                    active === "library" && source === value.value
+                      ? "page"
+                      : undefined
+                  }
+                >
+                  <SourceIcon platform={value.value} />
+                  <span>
+                    {value.value === "all" ? "Any source" : value.label}
+                  </span>
+                </Link>
+              ))}
+            </nav>
+          </details>
+        </div>
         <div className="source-rail-bottom">
-          <span className="private-label">
-            <span className="private-dot" />
-            Just for you
-          </span>
           <AccountMenu email={email} />
         </div>
       </aside>

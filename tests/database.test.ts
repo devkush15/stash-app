@@ -183,6 +183,8 @@ describe.sequential("Private persistent SQLite libraries", () => {
     expect(saved.tags).toEqual(["pitch deck"]);
     expect(saved.tags_edited).toBe(1);
     expect(await new Store(client).tagCatalog(alice)).toContain("pitch deck");
+    expect(await new Store(client).customTags(alice)).toContain("pitch deck");
+    expect(await store.customTags(bob)).not.toContain("pitch deck");
     await store.delete(alice, saved.id);
   });
   it("renames, merges and removes only this user's tags without deleting links or notes", async () => {
@@ -217,6 +219,45 @@ describe.sequential("Private persistent SQLite libraries", () => {
     expect((await store.get(alice, own.id))?.tags).toEqual([]);
     await store.delete(alice, own.id);
     await store.delete(bob, other.id);
+  });
+  it("shows only user-created tags in navigation and persists user renames of AI labels", async () => {
+    const saved = await store.save(
+      alice,
+      {
+        original_url: "https://example.com/ai-label",
+        normalized_url: "https://example.com/ai-label",
+        platform: "website",
+      },
+      null,
+    );
+    await store.update(alice, saved.id, { tags: ["generated label"] });
+    expect(await store.tagCatalog(alice)).toContain("generated label");
+    expect(await store.customTags(alice)).not.toContain("generated label");
+    await store.changeTag(alice, "generated label", "my research");
+    expect(await new Store(client).customTags(alice)).toContain("my research");
+    expect(await store.customTags(bob)).not.toContain("my research");
+    await store.changeTag(alice, "my research", null);
+    expect(await store.customTags(alice)).not.toContain("my research");
+    expect(await store.get(alice, saved.id)).not.toBeNull();
+    await store.delete(alice, saved.id);
+  });
+  it("preserves manually assigned tags from earlier captures in private navigation", async () => {
+    const saved = await store.save(
+      alice,
+      {
+        original_url: "https://example.com/legacy-manual-tag",
+        normalized_url: "https://example.com/legacy-manual-tag",
+        platform: "website",
+      },
+      null,
+      null,
+      ["my existing collection"],
+    );
+    expect(await new Store(client).customTags(alice)).toContain(
+      "my existing collection",
+    );
+    expect(await store.customTags(bob)).not.toContain("my existing collection");
+    await store.delete(alice, saved.id);
   });
 });
 

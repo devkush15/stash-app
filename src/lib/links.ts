@@ -127,6 +127,7 @@ export function displayUrl(input: string) {
 export function linkTitle(item: {
   title: string | null;
   original_url: string;
+  user_note?: string | null;
 }) {
   const title = item.title?.trim();
   const instagram = instagramUrl(item.original_url);
@@ -136,7 +137,13 @@ export function linkTitle(item: {
       /^(?:https?:\/\/|(?:www\.)?instagram\.com\/)/i.test(title) ||
       /^instagram(?: post| reel)?$/i.test(title))
   )
-    return instagram.kind === "reel" ? "Instagram Reel" : "Instagram post";
+    return (
+      item.user_note
+        ?.trim()
+        .split(/\n|[.!?](?:\s|$)/)[0]
+        .slice(0, 90) ||
+      (instagram.kind === "reel" ? "Instagram Reel" : "Instagram post")
+    );
   if (title) return title;
   try {
     const host = new URL(item.original_url).hostname;

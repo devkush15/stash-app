@@ -36,6 +36,7 @@ export type LibraryProps = {
   view?: string;
   category?: string;
   categories?: string[];
+  customTags?: string[];
 };
 export function Library({
   items,
@@ -52,6 +53,7 @@ export function Library({
   view = "all",
   category = "",
   categories = [],
+  customTags = [],
 }: LibraryProps) {
   const ready = useClientReady();
   const router = useRouter(),
@@ -113,13 +115,54 @@ export function Library({
       email={email}
       onAdd={() => setOpen(true)}
       source={platform}
-      sourceHref={(value) => (value === "all" ? "/library" : href(q, value))}
+      sourceHref={(value) => href(q, value)}
+      customTags={customTags}
+      selectedTags={selectedTags}
+      tagHref={(value) =>
+        href("", platform, [value], 1, { category: "", view: "all" })
+      }
+      onManageTags={() => setManaging(true)}
     >
       <div className="page-heading">
         <h1>Library</h1>
         <span className="item-count">
           {total.toLocaleString()} {total === 1 ? "link" : "links"}
         </span>
+        <label className="mobile-tag-browse">
+          <span className="sr-only">Browse by tag</span>
+          <select
+            aria-label="Browse by tag"
+            disabled={!ready || pending}
+            value={
+              selectedTags.length === 1 && customTags.includes(selectedTags[0])
+                ? `tag:${selectedTags[0]}`
+                : ""
+            }
+            onChange={(event) => {
+              const value = event.target.value;
+              if (value === "manage") setManaging(true);
+              else
+                start(() =>
+                  router.push(
+                    value
+                      ? href("", platform, [value.slice(4)], 1, {
+                          category: "",
+                          view: "all",
+                        })
+                      : "/library",
+                  ),
+                );
+            }}
+          >
+            <option value="">All links</option>
+            {customTags.map((value) => (
+              <option key={value} value={`tag:${value}`}>
+                {tagLabel(value)}
+              </option>
+            ))}
+            <option value="manage">Manage tags…</option>
+          </select>
+        </label>
       </div>
       <form
         role="search"

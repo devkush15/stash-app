@@ -98,6 +98,7 @@ export function TagPicker({
           type="button"
           className="tag-pill tag-add"
           aria-label="Add a tag"
+          disabled={busy}
           aria-expanded={adding}
           onClick={() => setAdding(!adding)}
         >
@@ -139,6 +140,7 @@ export function TagPicker({
             type="button"
             className="icon-button"
             aria-label="Cancel new tag"
+            disabled={busy}
             onClick={() => setAdding(false)}
           >
             <X size={18} />

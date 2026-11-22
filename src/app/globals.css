@@ -426,7 +426,6 @@ label {
   border-radius: 0.75rem;
   display: flex;
   flex-direction: column;
-  transition: border-color 140ms;
 }
 .saved-link-main {
   display: flex;
@@ -1149,10 +1148,7 @@ label {
   color: #303139;
   max-width: 100%;
   overflow-wrap: anywhere;
-  transition:
-    background-color 140ms,
-    border-color 140ms,
-    transform 140ms;
+  transition: transform 140ms;
 }
 .tag-pill:active {
   transform: scale(0.97);
@@ -1393,7 +1389,7 @@ body {
   display: flex;
   align-items: center;
   gap: 2.5rem;
-  min-height: 84px;
+  min-height: 72px;
   padding: 1rem max(1.25rem, calc((100vw - 1120px) / 2));
   background: #fcfbf8;
   border-bottom: 1px solid #e9e6df;
@@ -1447,14 +1443,15 @@ body {
 .workspace-main {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 2.6rem 1.25rem 5rem;
+  padding: 1.8rem 1.25rem 4rem;
   outline: none;
 }
 .page-heading {
   display: flex;
   align-items: baseline;
   gap: 0.8rem;
-  margin-bottom: 1.4rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
 }
 .page-heading h1 {
   font-size: 1.6rem;
@@ -1673,7 +1670,7 @@ body {
   flex-direction: row;
   gap: 1rem;
   align-items: flex-start;
-  padding: 1.2rem 0.2rem;
+  padding: 0.85rem 0.2rem;
   border: 0;
   border-bottom: 1px solid #e8e3da;
   border-radius: 0;
@@ -1734,7 +1731,7 @@ body {
   align-items: center;
   gap: 0.35rem;
   flex-wrap: wrap;
-  margin-top: 0.55rem;
+  margin-top: 0.4rem;
 }
 .tag-overflow {
   border: 0;
@@ -1995,7 +1992,7 @@ body {
     padding: 0.55rem 0.7rem;
   }
   .workspace-main {
-    padding: 1.7rem 1rem 4rem;
+    padding: 1.25rem 1rem 3rem;
   }
   .page-heading h1 {
     font-size: 1.4rem;
@@ -2234,6 +2231,138 @@ body {
 }
 
 /* The theme changes instantly, including native controls and dialog portals. */
+.mobile-tag-browse {
+  margin: 0 0 0 auto;
+  min-width: 0;
+  width: 7.5rem;
+  max-width: 44%;
+}
+.mobile-tag-browse select {
+  max-width: 100%;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: #75578f;
+  font-size: 0.875rem;
+}
+.rail-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.rail-empty-tags {
+  margin: 0.4rem 0.95rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.rail-manage-tags {
+  gap: 0.55rem;
+  margin-left: 0.95rem;
+  min-height: 40px;
+}
+.source-filter {
+  margin-top: 0.8rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
+}
+.source-filter summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.4rem 0.7rem;
+  list-style: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.source-filter summary::-webkit-details-marker {
+  display: none;
+}
+.source-filter[open] summary svg {
+  transform: rotate(180deg);
+}
+.source-rail .rail-tags-label {
+  margin: 1rem 0.95rem 0.35rem;
+}
+.source-rail .rail-tag {
+  min-height: 36px;
+  padding-block: 0.45rem;
+}
+.source-rail .rail-tag > span:last-child {
+  overflow-wrap: anywhere;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.source-rail .rail-tag.selected {
+  background: var(--tag-wash);
+  color: var(--tag-ink);
+}
+.source-rail .source-filter .source-nav-link {
+  min-height: 36px;
+  font-size: 0.82rem;
+}
+.title-placeholder {
+  margin: 0;
+  font-size: 0.94rem;
+  line-height: 1.45;
+}
+.title-edit-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 0;
+  padding: 0;
+  min-height: 32px;
+  text-align: start;
+  background: none;
+  font: inherit;
+  color: #75578f;
+}
+.entry-domain {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.entry-status + .status-action {
+  margin-left: 0.5rem;
+}
+.dialog-popup .link-form {
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+.dialog-popup textarea.input {
+  min-height: 4.5rem;
+}
+.dialog-popup .dialog-header {
+  margin-bottom: 0;
+}
+@media (min-width: 900px) {
+  .mobile-tag-browse,
+  .filter-tags-heading .text-button {
+    display: none;
+  }
+  .source-rail > .brand-link {
+    margin-bottom: 1.8rem;
+  }
+}
+@media (pointer: coarse) {
+  .mobile-tag-browse select {
+    font-size: 16px;
+  }
+  .title-edit-button,
+  .entry-status.status-action {
+    min-height: 44px;
+  }
+}
 .theme-toggle {
   border: 1px solid var(--border);
 }
@@ -2331,6 +2460,13 @@ body {
 :root[data-theme="dark"] .source-rail .source-nav-link.selected {
   background: #303a31;
   color: #d0dfcc;
+}
+:root[data-theme="dark"] .source-rail .rail-tag.selected {
+  background: var(--tag-wash);
+  color: var(--tag-ink);
+}
+:root[data-theme="dark"] :is(.mobile-tag-browse select, .title-edit-button) {
+  color: var(--accent);
 }
 :root[data-theme="dark"]
   :is(

@@ -66,7 +66,12 @@ export default async function Preview({
       "https://example.com/workspaces/northwind-industries/projects/q3-launch/docs/9f8e7d6c5b4a?tab=comments&filter=unresolved",
       "youtube",
     ),
-    base(3, "J", "https://example.com/j", "instagram"),
+    base(
+      3,
+      null,
+      "https://www.instagram.com/reel/StashMissing2026/",
+      "instagram",
+    ),
     base(
       4,
       "日本語のインターフェース設計とアクセシビリティの実践",
@@ -103,6 +108,9 @@ export default async function Preview({
   stress[1].processing_status = "limited";
   stress[1].indexing_note =
     "Content could not be accessed. Add a note to organize this link.";
+  stress[2].processing_status = "limited";
+  stress[2].indexing_note =
+    "Public content could not be accessed. Add your own title or note.";
   stress[4].user_note = "ملاحظات عن تصميم واجهات استخدام بسيطة وسهلة الوصول";
   const many = Array.from({ length: 500 }, (_, i) =>
     base(
@@ -133,6 +141,7 @@ export default async function Preview({
         q=""
         platform="all"
         page={1}
+        customTags={[...new Set(items.flatMap((item) => item.tags))]}
       />
       <nav
         aria-label="Test data"

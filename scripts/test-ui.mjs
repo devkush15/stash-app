@@ -19,4 +19,9 @@ try {
   );
 } finally {
   await rm(route, { recursive: true, force: true });
+  // An already-running local dev server can retain types for the temporary route.
+  await rm(resolve(".next/dev/types/app/dev-qa"), {
+    recursive: true,
+    force: true,
+  });
 }

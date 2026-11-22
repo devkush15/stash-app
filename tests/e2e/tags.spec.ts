@@ -19,6 +19,19 @@ test("capture, multi-tag filtering, grouping, rename/delete, sorting and Ask fal
     .getByRole("button", { name: "Create account", exact: true })
     .click();
   await expect(page).toHaveURL(/\/library$/);
+  await expect(page.getByText("Just for you", { exact: true })).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("navigation", { name: "Filter by source", exact: true })
+      .getByRole("link", { name: "Instagram", exact: true }),
+  ).not.toBeVisible();
+  await page.locator(".source-filter summary").click();
+  await expect(
+    page
+      .getByRole("navigation", { name: "Filter by source", exact: true })
+      .getByRole("link", { name: "Instagram", exact: true }),
+  ).toBeVisible();
+  await page.locator(".source-filter summary").click();
   const empty = await context.request.post("/api/ask", {
     headers: { origin: baseURL! },
     data: { question: "What have I saved?" },
@@ -36,6 +49,11 @@ test("capture, multi-tag filtering, grouping, rename/delete, sorting and Ask fal
   await page
     .getByRole("button", { name: "Close tag manager", exact: true })
     .click();
+  await expect(
+    page
+      .getByRole("navigation", { name: "Your tags", exact: true })
+      .getByRole("link", { name: "Pitch Deck", exact: true }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Add link", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await page
@@ -55,6 +73,11 @@ test("capture, multi-tag filtering, grouping, rename/delete, sorting and Ask fal
     page.getByRole("heading", { name: "My pitch reference", exact: true }),
   ).toBeVisible();
   // Tags created in capture must be manageable without a full page reload.
+  await expect(
+    page
+      .getByRole("navigation", { name: "Your tags", exact: true })
+      .getByRole("link", { name: "Capture-Only", exact: true }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Manage tags", exact: true }).click();
   await expect(
     page.getByLabel("Rename capture-only", { exact: true }),
@@ -79,6 +102,17 @@ test("capture, multi-tag filtering, grouping, rename/delete, sorting and Ask fal
   });
   expect(second.status()).toBe(201);
   await page.reload();
+  await expect(page.getByTestId("saved-link")).toHaveCount(2);
+  await page
+    .getByRole("navigation", { name: "Your tags", exact: true })
+    .getByRole("link", { name: "Pitch Deck", exact: true })
+    .click();
+  await expect(page).toHaveURL(/tag=pitch/);
+  await expect(page.getByTestId("saved-link")).toHaveCount(1);
+  await page
+    .getByRole("navigation", { name: "Library organization", exact: true })
+    .getByRole("link", { name: "All links", exact: true })
+    .click();
   await expect(page.getByTestId("saved-link")).toHaveCount(2);
   await page.getByLabel("Sort by", { exact: true }).selectOption("title");
   await expect(

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowUpRight, LoaderCircle, MessageCircle, Send } from "lucide-react";
 import { WorkspaceShell } from "./workspace-shell";
 import { LinkDialog } from "./link-dialog";
+import { TagManager } from "./tag-manager";
 import { useClientReady } from "@/lib/use-client-ready";
 import { api } from "@/lib/client-api";
 import { linkTitle, originalLink } from "@/lib/links";
@@ -267,15 +268,24 @@ export function AskStash({
   email,
   tags,
   hasContent = true,
+  customTags = [],
 }: {
   email: string;
   tags: string[];
   hasContent?: boolean;
+  customTags?: string[];
 }) {
   const [open, setOpen] = useState(false);
+  const [managing, setManaging] = useState(false);
   const router = useRouter();
   return (
-    <WorkspaceShell active="ask" email={email} onAdd={() => setOpen(true)}>
+    <WorkspaceShell
+      active="ask"
+      email={email}
+      onAdd={() => setOpen(true)}
+      customTags={customTags}
+      onManageTags={() => setManaging(true)}
+    >
       <AskPanel
         topics={tags}
         hasContent={hasContent}
@@ -292,6 +302,14 @@ export function AskStash({
           router.push("/library");
         }}
       />
+      {managing && (
+        <TagManager
+          open={managing}
+          onOpenChange={setManaging}
+          tags={tags}
+          onChanged={() => router.refresh()}
+        />
+      )}
     </WorkspaceShell>
   );
 }

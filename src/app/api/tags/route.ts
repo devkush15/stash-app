@@ -53,6 +53,8 @@ async function change(request: Request, remove: boolean) {
     const result = await db().changeTag(user.id, from, to);
     return json({ ...result, tags: await db().tagCatalog(user.id) });
   } catch (error) {
+    if (error instanceof Error && error.message === "TAG_LIMIT")
+      return json({ error: "You can create up to 32 custom tags." }, 400);
     return apiError(error);
   }
 }

@@ -15,11 +15,13 @@ export default async function LibraryPage({
   const params = libraryParams(await searchParams);
   let items: SavedItem[] = [],
     tags: string[] = [],
+    customTags: string[] = [],
     categories: string[] = [],
     error = false;
   try {
     const all = await db().list(user.id);
-    tags = await db().tagCatalog(user.id, all);
+    customTags = await db().customTags(user.id, all);
+    tags = await db().tagCatalog(user.id, all, customTags);
     categories = [
       ...new Set(
         all
@@ -42,6 +44,7 @@ export default async function LibraryPage({
       {...params}
       selectedTags={params.tags}
       tags={tags}
+      customTags={customTags}
       categories={categories}
       error={error}
     />

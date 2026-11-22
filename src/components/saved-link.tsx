@@ -41,30 +41,41 @@ export function SavedLink({
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const title = linkTitle(item);
+  const target = originalLink(item),
+    url = new URL(target),
+    originalLabel =
+      url.hostname.replace(/^www\./, "") +
+      (item.platform === "website" ? "" : url.pathname.replace(/\/$/, ""));
+  const needsTitle =
+    item.platform === "instagram" &&
+    !item.title_edited &&
+    /^Instagram(?: post| reel| link)?$/i.test(title);
+  const working = analyzing || item.processing_status === "processing";
   const source =
     sources.find((s) => s.value === item.platform)?.label || "Website";
   const needsDescription =
-    item.processing_status === "limited" &&
-    !item.ai_processed_at &&
+    ["limited", "failed"].includes(item.processing_status) &&
+    item.metadata_level === "none" &&
     !item.user_note;
   const retry =
+    !working &&
     !item.ai_processed_at &&
     ["pending", "failed", "deferred"].includes(item.processing_status) &&
     (item.processing_status === "pending" ||
       item.metadata_level !== "none" ||
       Boolean(item.user_note));
-  const status = analyzing
-    ? "Analyzing…"
+  const status = working
+    ? "Organizing…"
     : needsDescription
-      ? "Add a note"
+      ? "Public content unavailable"
       : item.processing_status === "limited"
         ? item.user_note
-          ? "From your notes"
-          : "Metadata only"
+          ? "Organized from your notes"
+          : "Public metadata only"
         : item.processing_status === "deferred"
-          ? "AI deferred"
+          ? "Organization deferred · link saved"
           : item.processing_status === "failed"
-            ? "Analysis unavailable"
+            ? "Organization unavailable · link saved"
             : "";
   return (
     <article className="saved-link" data-testid="saved-link">
@@ -72,30 +83,44 @@ export function SavedLink({
         <SourceIcon platform={item.platform} />
       </div>
       <div className="entry-content">
+        {needsTitle ? (
+          <h3 className="card-title title-placeholder">
+            <button
+              className="title-edit-button"
+              disabled={!ready || working}
+              onClick={() => setEditing(true)}
+            >
+              Name this {title} <Pencil size={13} aria-hidden="true" />
+            </button>
+          </h3>
+        ) : (
+          <a
+            className="entry-title"
+            href={target}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Open ${title} (opens in a new tab)`}
+          >
+            <h3 className="card-title" dir="auto" title={title}>
+              {title}
+            </h3>
+            <ExternalLink size={14} aria-hidden="true" />
+          </a>
+        )}
         <a
-          className="entry-title"
-          href={originalLink(item)}
+          className="entry-domain"
+          href={target}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={`Open ${title} (opens in a new tab)`}
+          aria-label={`Open original ${source} link (opens in a new tab)`}
+          title={target}
         >
-          <h3 className="card-title" dir="auto" title={title}>
-            {title}
-          </h3>
-          <ExternalLink size={14} aria-hidden="true" />
+          {originalLabel === title
+            ? "Open original"
+            : originalLabel.length > 52
+              ? originalLabel.slice(0, 49) + "…"
+              : originalLabel}
         </a>
-        {item.platform === "website" &&
-          title !==
-            new URL(item.original_url).hostname.replace(/^www\./, "") && (
-            <a
-              className="entry-domain"
-              href={originalLink(item)}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {new URL(item.original_url).hostname.replace(/^www\./, "")}
-            </a>
-          )}
         {item.user_note && (
           <p className="entry-note" title={item.user_note} dir="auto">
             <span>Your note · </span>
@@ -127,24 +152,24 @@ export function SavedLink({
             )}
           </div>
         )}
-        {status &&
-          (needsDescription ? (
-            <button
-              className="entry-status status-action"
-              disabled={!ready}
-              onClick={() => setEditing(true)}
-            >
-              Add a note
-            </button>
-          ) : (
-            <span
-              className="entry-status"
-              role="status"
-              title={item.indexing_note || undefined}
-            >
-              {status}
-            </span>
-          ))}
+        {status && (
+          <span
+            className="entry-status"
+            role="status"
+            title={item.indexing_note || undefined}
+          >
+            {status}
+          </span>
+        )}
+        {needsDescription && !working && (
+          <button
+            className="entry-status status-action"
+            disabled={!ready}
+            onClick={() => setEditing(true)}
+          >
+            Add a note
+          </button>
+        )}
         {retry && onAnalyze && (
           <button
             className="analyze-button"
@@ -157,8 +182,10 @@ export function SavedLink({
                 size={14}
                 aria-label="Analyzing"
               />
+            ) : item.processing_status === "pending" ? (
+              "Organize link"
             ) : (
-              "Analyze"
+              "Retry organization"
             )}
           </button>
         )}

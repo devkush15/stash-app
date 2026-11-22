@@ -240,10 +240,6 @@ export class Store {
           custom.flatMap((tag) => (tag === from ? (to ? [to] : []) : [tag])),
         ),
       ];
-      await tx.execute({
-        sql: "UPDATE users SET custom_tags=? WHERE id=?",
-        args: [JSON.stringify(changed), userId],
-      });
       const records = await tx.execute({
         sql: "SELECT id,tags FROM saved_items WHERE user_id=?",
         args: [userId],
@@ -267,6 +263,12 @@ export class Store {
           ],
         });
       }
+      if (to && updates.length && !changed.includes(to)) changed.push(to);
+      if (changed.length > 32) throw new Error("TAG_LIMIT");
+      await tx.execute({
+        sql: "UPDATE users SET custom_tags=? WHERE id=?",
+        args: [JSON.stringify(changed), userId],
+      });
       if (updates.length) await tx.batch(updates);
       await tx.commit();
       return { affected: updates.length };
@@ -286,16 +288,26 @@ export class Store {
     });
     return Number(r.rows[0].count) <= cap;
   }
-  async tagCatalog(userId: string, items?: SavedItem[]) {
+  async customTags(userId: string, items?: SavedItem[]): Promise<string[]> {
     await this.ready();
     const result = await this.client.execute({
       sql: "SELECT custom_tags FROM users WHERE id=?",
       args: [userId],
     });
-    const custom = JSON.parse(
+    const created = JSON.parse(
       String(result.rows[0]?.custom_tags || "[]"),
     ) as string[];
+    // Earlier captures stored user-selected tags on links, before a tag registry existed.
+    const assigned = (items ?? (await this.list(userId)))
+      .filter((item) => item.tags_edited === 1)
+      .flatMap((item) => item.tags);
+    return [...new Set([...created, ...assigned])].sort((a, b) =>
+      a.localeCompare(b),
+    );
+  }
+  async tagCatalog(userId: string, items?: SavedItem[], customTags?: string[]) {
     const links = items || (await this.list(userId));
+    const custom = customTags ?? (await this.customTags(userId, links));
     return [
       ...new Set([...custom, ...links.flatMap((link) => link.tags)]),
     ].sort((a, b) => a.localeCompare(b));

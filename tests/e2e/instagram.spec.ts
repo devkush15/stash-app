@@ -28,12 +28,15 @@ test("Instagram fallback, canonical duplicates, editing and description search",
     );
   await page.getByRole("button", { name: "Save link", exact: true }).click();
   const card = page.getByTestId("saved-link");
-  await expect(card.getByRole("heading")).toHaveText("Instagram Reel");
+  await expect(card.getByRole("heading")).toHaveText(
+    "Name this Instagram Reel",
+  );
   await expect(
     card.getByRole("button", { name: "Add a note", exact: true }),
   ).toBeVisible();
   await expect(card).not.toContainText("igsh");
-  await expect(card).not.toContainText("instagram.com");
+  await expect(card.getByRole("heading")).not.toContainText("instagram.com");
+  await expect(card).toContainText("Public content unavailable");
   expect(await card.getByRole("link").getAttribute("href")).toBe(
     "https://www.instagram.com/reel/StashMissing2026/",
   );

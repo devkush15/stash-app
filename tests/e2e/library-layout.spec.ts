@@ -134,5 +134,34 @@ for (const width of [320, 1440]) {
       "background-color",
       "rgb(249, 248, 245)",
     );
+    await page
+      .getByRole("button", { name: "Switch to dark mode", exact: true })
+      .click();
+    const contrast = await page
+      .locator(".entry-tags .tag-pill")
+      .first()
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        const luminance = (color: string) => {
+          const channels = color
+            .match(/[\d.]+/g)!
+            .slice(0, 3)
+            .map(Number)
+            .map((v) => {
+              const s = v / 255;
+              return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+            });
+          return (
+            channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+          );
+        };
+        const text = luminance(style.color),
+          background = luminance(style.backgroundColor);
+        return (
+          (Math.max(text, background) + 0.05) /
+          (Math.min(text, background) + 0.05)
+        );
+      });
+    expect(contrast).toBeGreaterThanOrEqual(4.5);
   });
 }
