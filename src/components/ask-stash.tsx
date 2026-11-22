@@ -1,7 +1,13 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowUpRight, LoaderCircle, MessageCircle, Send } from "lucide-react";
+import {
+  ArrowUpRight,
+  LoaderCircle,
+  MessageCircle,
+  Send,
+  Sparkles,
+} from "lucide-react";
 import { WorkspaceShell } from "./workspace-shell";
 import { LinkDialog } from "./link-dialog";
 import { TagManager } from "./tag-manager";
@@ -21,13 +27,17 @@ export function AskPanel({
   topics = [],
   hasContent = true,
   onAdd,
+  initialQuestion = "",
+  selectedIds = [],
 }: {
+  initialQuestion?: string;
+  selectedIds?: string[];
   topics?: string[];
   hasContent?: boolean;
   onAdd?: () => void;
 }) {
   const ready = useClientReady();
-  const [question, setQuestion] = useState(""),
+  const [question, setQuestion] = useState(initialQuestion),
     [answer, setAnswer] = useState<Answer | null>(null),
     [error, setError] = useState(""),
     [pending, setPending] = useState(false),
@@ -51,12 +61,25 @@ export function AskPanel({
     setAnswer(null);
     setAsked(value.trim());
     try {
-      setAnswer(
-        await api<Answer>("/api/ask", {
-          method: "POST",
-          body: JSON.stringify({ question: value.trim() }),
-        }),
-      );
+      const result = await api<Answer>("/api/ask", {
+        method: "POST",
+        body: JSON.stringify({ question: value.trim() }),
+      });
+      if (selectedIds.length) {
+        const sources = result.sources.filter((item) =>
+          selectedIds.includes(item.id),
+        );
+        setAnswer({
+          ...result,
+          sources,
+          claims: result.claims.filter((claim) =>
+            sources.some((item) => item.id === claim.sourceId),
+          ),
+          note: sources.length
+            ? "Showing evidence from your selected links."
+            : "No evidence from the selected links was returned. Try naming a link or asking about its notes.",
+        });
+      } else setAnswer(result);
     } catch (e) {
       setError(
         e instanceof Error
@@ -92,6 +115,12 @@ export function AskPanel({
       <div className="page-heading">
         <h1>Ask Stash</h1>
       </div>
+      {!!selectedIds.length && (
+        <p className="answer-note">
+          {selectedIds.length} selected links · results are restricted to this
+          selection. Retrieval uses your private library.
+        </p>
+      )}
       <form
         className="ask-form"
         onSubmit={(event) => {
@@ -173,7 +202,7 @@ export function AskPanel({
           aria-live="polite"
         >
           <div className="answer-heading">
-            <MessageCircle size={19} />
+            <Sparkles size={19} />
             <h2>
               {answer.mode === "sources"
                 ? "Matching saved sources"
@@ -275,6 +304,47 @@ export function AskStash({
   hasContent?: boolean;
   customTags?: string[];
 }) {
+  const [context, setContext] = useState<{
+    q: string;
+    ids: string[];
+    counts: Record<string, number>;
+  } | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ids = (params.get("items") || "").split(",").filter(Boolean);
+    let cancelled = false;
+    void api<{ items: SavedItem[] }>("/api/items")
+      .then(({ items }) => {
+        if (cancelled) return;
+        const chosen = items.filter((item) => ids.includes(item.id));
+        const prefix = params.get("q") || "";
+        const names = chosen.map(linkTitle).join("; ");
+        setContext({
+          q: (prefix + (names ? ` Selected links: ${names}` : "")).slice(
+            0,
+            500,
+          ),
+          ids: chosen.map((i) => i.id),
+          counts: Object.fromEntries(
+            customTags.map((tag) => [
+              tag,
+              items.filter((i) => i.tags.includes(tag)).length,
+            ]),
+          ),
+        });
+      })
+      .catch(() => {
+        if (!cancelled)
+          setContext({
+            q: (params.get("q") || "").slice(0, 500),
+            ids,
+            counts: {},
+          });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [customTags]);
   const [open, setOpen] = useState(false);
   const [managing, setManaging] = useState(false);
   const router = useRouter();
@@ -284,13 +354,19 @@ export function AskStash({
       email={email}
       onAdd={() => setOpen(true)}
       customTags={customTags}
+      tagCounts={context?.counts}
       onManageTags={() => setManaging(true)}
     >
-      <AskPanel
-        topics={tags}
-        hasContent={hasContent}
-        onAdd={() => setOpen(true)}
-      />
+      {context && (
+        <AskPanel
+          key={context.q}
+          initialQuestion={context.q}
+          selectedIds={context.ids}
+          topics={tags}
+          hasContent={hasContent}
+          onAdd={() => setOpen(true)}
+        />
+      )}
       <LinkDialog
         open={open}
         onOpenChange={setOpen}
