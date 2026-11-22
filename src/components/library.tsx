@@ -7,7 +7,6 @@ import {
   SlidersHorizontal,
   X,
   Sparkles,
-  ArrowUp,
   Grid2X2,
   List,
   Rows3,
@@ -71,7 +70,6 @@ export function Library(props: LibraryProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDelete = useRef<SavedItem[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
-  const [askQuery, setAskQuery] = useState("");
   const load = useCallback(async () => {
     try {
       const result = await api<{ items: SavedItem[] }>("/api/items");
@@ -135,9 +133,6 @@ export function Library(props: LibraryProps) {
       ).length,
     ]),
   );
-  const topics = [...custom]
-    .sort((a, b) => counts[b] - counts[a] || a.localeCompare(b))
-    .slice(0, 3);
   const allTags = [
     ...new Set([
       ...catalog,
@@ -279,38 +274,14 @@ export function Library(props: LibraryProps) {
           {total} {total === 1 ? "link" : "links"}
         </span>
       </div>
-      <form
-        className="library-ask-bar"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (askQuery.trim()) ask(askQuery.trim());
-        }}
+      <button
+        className="ask-fab"
+        aria-label="Open Ask Stash"
+        title="Ask Stash"
+        onClick={() => router.push("/ask")}
       >
-        <Sparkles size={18} />
-        <input
-          aria-label="Ask your stash"
-          placeholder="Ask your stash anything…"
-          value={askQuery}
-          onChange={(e) => setAskQuery(e.target.value)}
-          maxLength={500}
-        />
-        <button
-          className="icon-button"
-          aria-label="Ask Stash"
-          disabled={!askQuery.trim()}
-        >
-          <ArrowUp size={18} />
-        </button>
-      </form>
-      {!!topics.length && (
-        <div className="prompt-chips">
-          {topics.map((tag) => (
-            <button key={tag} onClick={() => ask(`What ${tag} did I save?`)}>
-              What {tag} did I save?
-            </button>
-          ))}
-        </div>
-      )}
+        <Sparkles size={23} aria-hidden="true" />
+      </button>
       <div className="library-controls">
         <form
           role="search"
@@ -331,9 +302,6 @@ export function Library(props: LibraryProps) {
             }}
           />
           <kbd title="Command K or Control K">⌘K / Ctrl K</kbd>
-          <button className="sr-only" aria-label="Search">
-            Search
-          </button>
         </form>
         <Popover.Root open={filters} onOpenChange={setFilters}>
           <Popover.Trigger className="button button-secondary">
