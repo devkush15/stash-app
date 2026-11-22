@@ -1,29 +1,26 @@
 "use client";
-
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Bookmark,
-  Check,
   ChevronLeft,
   ChevronRight,
-  Command,
   LoaderCircle,
-  Plus,
   Search,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
-import { Brand } from "./brand";
-import { SourceIcon } from "./source-icon";
-import { AccountMenu } from "./account-menu";
-import { LinkDialog } from "./link-dialog";
+import { useRouter } from "next/navigation";
+import { WorkspaceShell } from "./workspace-shell";
 import { SavedLink } from "./saved-link";
-import { TagPicker, tagLabel, tagTone } from "./tag-picker";
+import { LinkDialog } from "./link-dialog";
+import { TagManager } from "./tag-manager";
+import { tagLabel, tagTone } from "./tag-picker";
 import { libraryHref, PAGE_SIZE, sources } from "@/lib/links";
-import type { Platform, SavedItem } from "@/lib/database.types";
+import { groupLibrary } from "@/lib/library-view";
+import { useClientReady } from "@/lib/use-client-ready";
 import { api } from "@/lib/client-api";
-
+import type { Platform, SavedItem } from "@/lib/database.types";
 export type LibraryProps = {
   items: SavedItem[];
   email: string;
@@ -34,461 +31,487 @@ export type LibraryProps = {
   error?: boolean;
   tags?: string[];
   tag?: string;
+  selectedTags?: string[];
+  sort?: string;
+  view?: string;
+  category?: string;
+  categories?: string[];
 };
-
 export function Library({
-  items: initialItems,
+  items,
   email,
-  total: initialTotal,
+  total,
   q,
   platform,
   page,
   error,
   tags = [],
   tag = "",
+  selectedTags = tag ? [tag] : [],
+  sort = "newest",
+  view = "all",
+  category = "",
+  categories = [],
 }: LibraryProps) {
-  const router = useRouter();
-  const [extraTags, setExtraTags] = useState<string[]>([]);
-  const tagOptions = [
-    ...new Set([
-      ...initialItems
-        .map((item) => item.tags[0])
-        .filter((value): value is string => Boolean(value))
-        .sort((a, b) => a.localeCompare(b)),
-      ...tags,
-      ...extraTags,
-      ...initialItems.flatMap((item) => item.tags),
-    ]),
-  ];
-  const [open, setOpen] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [pending, startTransition] = useTransition();
-  const [searching, startSearch] = useTransition();
-  const [searchResult, setSearchResult] = useState<{
-    key: string;
-    items: SavedItem[];
-    note: string;
-  } | null>(null);
-  const [analyzing, setAnalyzing] = useState<string[]>([]);
-  const searchKey = JSON.stringify([q, platform, tag]);
-  const activeSearch = searchResult?.key === searchKey ? searchResult : null;
-  const items = activeSearch
-    ? activeSearch.items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-    : initialItems;
-  const total = activeSearch ? activeSearch.items.length : initialTotal;
+  const ready = useClientReady();
+  const router = useRouter(),
+    searchRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false),
+    [filters, setFilters] = useState(
+      Boolean(selectedTags.length || platform !== "all" || category),
+    ),
+    [managing, setManaging] = useState(false),
+    [notice, setNotice] = useState(""),
+    [analyzing, setAnalyzing] = useState<string[]>([]),
+    [pending, start] = useTransition();
+  const options = { sort, view, category };
+  const href = (
+    query = q,
+    source = platform,
+    values = selectedTags,
+    number = 1,
+    changes: Partial<typeof options> = {},
+  ) => libraryHref(query, source, number, values, { ...options, ...changes });
+  const catalog = [
+    ...new Set([...tags, ...items.flatMap((item) => item.tags)]),
+  ].sort((a, b) => a.localeCompare(b));
+  const groups = groupLibrary(items, view);
+  const activeFilters =
+    selectedTags.length + (platform !== "all" ? 1 : 0) + (category ? 1 : 0);
   useEffect(() => {
-    if (!q) return;
-    let canceled = false;
-    startSearch(async () => {
-      try {
-        const result = await api<{ items: SavedItem[]; note: string }>(
-          "/api/search",
-          {
-            method: "POST",
-            body: JSON.stringify({ q, source: platform, tag }),
-          },
-        );
-        if (!canceled)
-          setSearchResult({
-            key: JSON.stringify([q, platform, tag]),
-            ...result,
-          });
-      } catch {
-        if (!canceled)
-          setNotice("Keyword results · AI search is unavailable right now.");
-      }
-    });
-    return () => {
-      canceled = true;
-    };
-  }, [q, platform, tag]);
-  async function analyze(id: string) {
-    setAnalyzing((previous) => [...previous, id]);
-    try {
-      await api(`/api/items/${id}/index`, { method: "POST" });
-      router.refresh();
-    } catch (error) {
-      setNotice(
-        error instanceof Error
-          ? error.message
-          : "Analysis is unavailable. Link saved.",
-      );
-    } finally {
-      setAnalyzing((previous) => previous.filter((value) => value !== id));
-    }
-  }
-  const searchRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const handle = (event: KeyboardEvent) => {
+    const key = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         searchRef.current?.focus();
       }
     };
-    const sync = () => {
-      if (document.visibilityState === "visible") router.refresh();
-    };
-    document.addEventListener("keydown", handle);
-    document.addEventListener("visibilitychange", sync);
-    window.addEventListener("focus", sync);
-    return () => {
-      document.removeEventListener("keydown", handle);
-      document.removeEventListener("visibilitychange", sync);
-      window.removeEventListener("focus", sync);
-    };
-  }, [router]);
-  const notify = (message: string) => {
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, []);
+  async function analyze(id: string) {
+    setAnalyzing((values) => [...values, id]);
+    try {
+      await api(`/api/items/${id}/index`, { method: "POST" });
+      router.refresh();
+    } catch (e) {
+      setNotice(
+        e instanceof Error
+          ? e.message
+          : "Your link is saved. Analysis is unavailable.",
+      );
+    } finally {
+      setAnalyzing((values) => values.filter((value) => value !== id));
+    }
+  }
+  const refresh = (message: string) => {
     setNotice(message);
     router.refresh();
   };
-  const title =
-    platform === "all"
-      ? "All links"
-      : sources.find((s) => s.value === platform)?.label;
-
-  const grouped = new Map<string, SavedItem[]>();
-  for (const item of items) {
-    const key = q ? "Results" : tag || item.tags[0] || "Unsorted";
-    grouped.set(key, [...(grouped.get(key) || []), item]);
-  }
-  const groups = [...grouped].sort((a, b) =>
-    q ? 0 : a[0].localeCompare(b[0]),
-  );
-
   return (
-    <div className="app-shell">
-      <a className="skip-link" href="#library-content">
-        Skip to library
-      </a>
-      <aside className="sidebar">
-        <Link href="/library" className="brand-link">
-          <Brand />
-        </Link>
-        <div className="sidebar-label">Library</div>
-        <nav className="source-nav" aria-label="Sources">
-          {sources.map((source) => (
-            <Link
-              prefetch={false}
-              key={source.value}
-              href={libraryHref(q, source.value, 1, tag)}
-              className={`source-nav-link ${platform === source.value ? "selected" : ""}`}
-              aria-current={platform === source.value ? "page" : undefined}
-            >
-              <SourceIcon platform={source.value} />
-              <span>{source.label}</span>
-            </Link>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <span className="private-label">
-            <span className="private-dot" />
-            Just for you
-          </span>
-          <AccountMenu email={email} />
-        </div>
-      </aside>
-      <div className="workspace">
-        <header className="topbar">
-          <Link className="mobile-brand brand-link" href="/library">
-            <Brand />
+    <WorkspaceShell
+      active="library"
+      email={email}
+      onAdd={() => setOpen(true)}
+      source={platform}
+      sourceHref={(value) => (value === "all" ? "/library" : href(q, value))}
+    >
+      <div className="page-heading">
+        <h1>Library</h1>
+        <span className="item-count">
+          {total.toLocaleString()} {total === 1 ? "link" : "links"}
+        </span>
+      </div>
+      <form
+        role="search"
+        className="library-search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const value = String(new FormData(event.currentTarget).get("q") || "")
+            .trim()
+            .slice(0, 200);
+          start(() => router.push(href(value)));
+        }}
+      >
+        <Search size={20} aria-hidden="true" />
+        <input
+          ref={searchRef}
+          key={q}
+          name="q"
+          type="search"
+          defaultValue={q}
+          placeholder="Search titles, notes, or tags…"
+          aria-label="Search your saves"
+          disabled={!ready}
+          maxLength={200}
+          autoComplete="off"
+          enterKeyHint="search"
+        />
+        {q && (
+          <Link
+            href={href("")}
+            className="icon-button"
+            aria-label="Clear search"
+          >
+            <X size={17} />
           </Link>
-          <form
-            className="search-form"
-            action="/library"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const form = new FormData(event.currentTarget);
-              startTransition(() =>
-                router.push(
-                  libraryHref(
-                    String(form.get("q") ?? "")
-                      .trim()
-                      .slice(0, 200),
-                    platform,
-                    1,
-                    tag,
-                  ),
-                ),
-              );
-            }}
-            role="search"
-          >
-            <Search size={19} aria-hidden="true" />
-            <input
-              ref={searchRef}
-              key={q}
-              defaultValue={q}
-              name="q"
-              type="search"
-              placeholder="Search your saves…"
-              aria-label="Search your saves"
-              maxLength={200}
-              autoComplete="off"
-              enterKeyHint="search"
-            />
-            {platform !== "all" && (
-              <input type="hidden" name="source" value={platform} />
-            )}
-            <kbd className="search-shortcut">
-              <Command size={12} aria-hidden="true" /> K
-            </kbd>
-            <button
-              type="submit"
-              className="icon-button search-submit"
-              aria-label="Search"
-            >
-              {pending || searching ? (
-                <LoaderCircle className="spinner" size={17} />
-              ) : (
-                <ChevronRight size={18} />
-              )}
-            </button>
-          </form>
-          <button
-            className="button button-primary add-button"
-            onClick={() => setOpen(true)}
-          >
-            <Plus size={18} aria-hidden="true" />
-            <span>Add link</span>
-          </button>
-          <div className="mobile-account">
-            <AccountMenu email={email} />
-          </div>
-        </header>
-        <nav className="mobile-source-nav" aria-label="Filter by source">
-          {sources.map((source) => (
-            <Link
-              prefetch={false}
-              key={source.value}
-              href={libraryHref(q, source.value, 1, tag)}
-              className={`source-chip ${platform === source.value ? "selected" : ""}`}
-              aria-current={platform === source.value ? "page" : undefined}
-            >
-              <SourceIcon platform={source.value} />
-              {source.label}
-            </Link>
-          ))}
-        </nav>
-        <main
-          id="library-content"
-          className="library-content"
-          tabIndex={-1}
-          aria-busy={pending || searching}
+        )}
+        <button className="icon-button" aria-label="Search" disabled={!ready}>
+          {pending ? (
+            <LoaderCircle className="spinner" size={18} />
+          ) : (
+            <ChevronRight size={19} />
+          )}
+        </button>
+      </form>
+      <div className="library-toolbar">
+        <button
+          className={`button button-secondary filter-toggle ${activeFilters ? "has-filters" : ""}`}
+          aria-expanded={filters}
+          aria-controls="library-filters"
+          disabled={!ready}
+          onClick={() => setFilters(!filters)}
         >
-          <section className="library-tags" aria-label="Tags">
-            <h2>Tags</h2>
-            <TagPicker
-              single
-              options={tagOptions}
-              selected={tag ? [tag] : []}
-              onChange={(values) =>
-                startTransition(() =>
-                  router.push(libraryHref(q, platform, 1, values[0] || "")),
+          <SlidersHorizontal size={16} />
+          Filters
+          {activeFilters > 0 && (
+            <span className="filter-count">{activeFilters}</span>
+          )}
+        </button>
+        <label className="sort-control">
+          Sort by
+          <select
+            aria-label="Sort by"
+            disabled={!ready || pending}
+            value={sort}
+            onChange={(event) =>
+              start(() =>
+                router.push(
+                  href(q, platform, selectedTags, 1, {
+                    sort: event.target.value,
+                  }),
+                ),
+              )
+            }
+          >
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="title">Title A–Z</option>
+          </select>
+        </label>
+      </div>
+      {filters && (
+        <form
+          id="library-filters"
+          className="filter-panel"
+          key={JSON.stringify([
+            selectedTags,
+            platform,
+            category,
+            view,
+            catalog,
+          ])}
+          onSubmit={(event) => {
+            event.preventDefault();
+            const data = new FormData(event.currentTarget);
+            if (data.getAll("tag").length > 8) {
+              setNotice("Choose up to 8 tags for a filter.");
+              return;
+            }
+            start(() =>
+              router.push(
+                libraryHref(
+                  q,
+                  String(data.get("source")),
+                  1,
+                  data.getAll("tag").map(String),
+                  {
+                    sort,
+                    view: String(data.get("view")),
+                    category: String(data.get("category")),
+                  },
+                ),
+              ),
+            );
+          }}
+        >
+          <div className="filter-selects">
+            <label className="mobile-source-filter">
+              Source
+              <select
+                name="source"
+                aria-label="Source"
+                disabled={!ready || pending}
+                defaultValue={platform}
+              >
+                {sources.map((source) => (
+                  <option key={source.value} value={source.value}>
+                    {source.value === "all" ? "All sources" : source.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Category
+              <select
+                name="category"
+                aria-label="Category"
+                disabled={!ready || pending}
+                defaultValue={category}
+              >
+                <option value="">All categories</option>
+                {[...new Set([...categories, "Uncategorized"])].map((value) => (
+                  <option key={value}>{value}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              View
+              <select
+                name="view"
+                aria-label="View"
+                disabled={!ready || pending}
+                defaultValue={view}
+              >
+                <option value="all">All links</option>
+                <option value="categories">Group by category</option>
+                <option value="tags">Group by tag</option>
+              </select>
+            </label>
+          </div>
+          <div className="filter-tags-heading">
+            <span>
+              Tags <small>Match any · up to 8 tags</small>
+            </span>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setManaging(true)}
+            >
+              Manage tags
+            </button>
+          </div>
+          <div className="filter-tags">
+            {catalog.map((value) => (
+              <label
+                className={`tag-filter tag-tone-${tagTone(value)}`}
+                key={value}
+              >
+                <input
+                  type="checkbox"
+                  disabled={!ready || pending}
+                  name="tag"
+                  value={value}
+                  defaultChecked={selectedTags.includes(value)}
+                />
+                <span className="tag-dot" />
+                {tagLabel(value)}
+              </label>
+            ))}
+            {!catalog.length && (
+              <span className="muted">
+                No tags yet. Add one when saving a link.
+              </span>
+            )}
+          </div>
+          <div className="filter-panel-actions">
+            <Link
+              className="text-button"
+              href={libraryHref(q, "all", 1, [], { sort })}
+            >
+              Clear filters
+            </Link>
+            <button className="button button-primary" disabled={pending}>
+              Apply filters
+            </button>
+          </div>
+        </form>
+      )}
+      {(activeFilters > 0 || q) && (
+        <div className="active-filters">
+          {q && <span>Results for “{q}”</span>}
+          {selectedTags.map((value) => (
+            <button
+              key={value}
+              className={`tag-pill compact tag-tone-${tagTone(value)}`}
+              onClick={() =>
+                start(() =>
+                  router.push(
+                    href(
+                      q,
+                      platform,
+                      selectedTags.filter((t) => t !== value),
+                    ),
+                  ),
                 )
               }
-              onCreate={async (value) => {
-                const result = await api<{ tags: string[] }>("/api/tags", {
-                  method: "POST",
-                  body: JSON.stringify({ tag: value }),
-                });
-                setExtraTags(result.tags);
-                router.refresh();
-              }}
-            />
-          </section>
-          <div className="library-heading">
-            <h1>{q ? "Search results" : title}</h1>
-            {!error && (
-              <span className="item-count">
-                {new Intl.NumberFormat("en").format(total)}{" "}
-                {total === 1 ? "link" : "links"}
-              </span>
-            )}
+            >
+              {tagLabel(value)}
+              <X size={12} />
+            </button>
+          ))}
+          {category && <span>{category}</span>}
+          {platform !== "all" && (
+            <span>
+              {sources.find((source) => source.value === platform)?.label}
+            </span>
+          )}
+        </div>
+      )}
+      {notice && (
+        <div className="inline-notice" role="status">
+          {notice}
+          <button
+            className="icon-button"
+            aria-label="Dismiss notification"
+            onClick={() => setNotice("")}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+      <div className="library-results" aria-busy={pending}>
+        {error ? (
+          <div className="empty-state">
+            <h2>Couldn’t load your links.</h2>
+            <button
+              className="button button-secondary"
+              onClick={() => router.refresh()}
+            >
+              Try again
+            </button>
           </div>
-          {q && (
-            <div className="search-query">
-              <span>
-                Results for <strong>“{q}”</strong>
-              </span>
-              <Link
-                href={libraryHref("", platform, 1, tag)}
-                className="icon-button"
-                aria-label="Clear search"
-              >
-                <X size={16} aria-hidden="true" />
-              </Link>
-            </div>
-          )}
-          {q && (
-            <p className="search-mode" role="status">
-              {searching
-                ? "Searching…"
-                : activeSearch?.note || "Keyword results"}
-            </p>
-          )}
-          {notice && (
-            <div role="status" className="success-notice">
-              <Check size={16} aria-hidden="true" />
-              {notice}
-              <button
-                className="icon-button"
-                aria-label="Dismiss notification"
-                onClick={() => setNotice("")}
-              >
-                <X size={15} />
-              </button>
-            </div>
-          )}
-          {error ? (
-            <div className="empty-state">
-              <span className="empty-icon">
-                <Bookmark size={27} />
-              </span>
-              <h2>Couldn’t load your links.</h2>
-              <p>Please try again in a moment.</p>
-              <button
-                className="button button-secondary"
-                onClick={() => startTransition(() => router.refresh())}
-              >
-                {pending ? "Retrying…" : "Try again"}
-              </button>
-            </div>
-          ) : items.length ? (
-            <>
-              <div className="tag-groups">
-                {groups.map(([group, links]) => (
-                  <section
-                    className={`tag-group tag-tone-${tagTone(group)}`}
-                    key={group}
-                  >
-                    {!q && (
-                      <div className="tag-group-heading">
-                        <h2>{tagLabel(group)}</h2>
-                        <span>{links.length}</span>
-                      </div>
-                    )}
-                    <div className="content-grid">
-                      {links.map((item) => (
-                        <SavedLink
-                          key={item.id}
-                          item={item}
-                          tagOptions={tagOptions}
-                          analyzing={analyzing.includes(item.id)}
-                          onAnalyze={analyze}
-                          onEdited={(updated, reanalyze) => {
-                            setSearchResult(null);
-                            notify("Link updated.");
-                            if (reanalyze) void analyze(updated.id);
-                          }}
-                          onDeleted={() => {
-                            setSearchResult((previous) =>
-                              previous
-                                ? {
-                                    ...previous,
-                                    items: previous.items.filter(
-                                      (i) => i.id !== item.id,
-                                    ),
-                                  }
-                                : null,
-                            );
-                            notify("Link deleted.");
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </section>
+        ) : items.length ? (
+          groups.map(([name, links]) => (
+            <section className="link-section" key={name}>
+              {view !== "all" && (
+                <div className={`section-heading tag-tone-${tagTone(name)}`}>
+                  <span className="tag-dot" />
+                  <h2>{tagLabel(name)}</h2>
+                  <span>{links.length}</span>
+                </div>
+              )}
+              <div className="link-list">
+                {links.map((item) => (
+                  <SavedLink
+                    key={item.id}
+                    item={item}
+                    analyzing={analyzing.includes(item.id)}
+                    onAnalyze={analyze}
+                    tagOptions={catalog}
+                    onTag={(value) =>
+                      start(() =>
+                        router.push(
+                          href(
+                            q,
+                            platform,
+                            selectedTags.includes(value)
+                              ? selectedTags.filter((t) => t !== value)
+                              : [...selectedTags, value].slice(0, 8),
+                          ),
+                        ),
+                      )
+                    }
+                    onEdited={(updated, reanalyze) => {
+                      refresh("Link updated.");
+                      if (reanalyze) void analyze(updated.id);
+                    }}
+                    onDeleted={() => refresh("Link deleted.")}
+                  />
                 ))}
               </div>
-            </>
-          ) : (
-            <div className="empty-state">
-              <span className="empty-icon">
-                {q ? (
-                  <Search size={27} strokeWidth={1.5} />
-                ) : (
-                  <Bookmark size={27} strokeWidth={1.5} />
-                )}
-              </span>
-              <h2>
-                {q
-                  ? "No matching links."
-                  : tag
-                    ? `No links tagged “${tagLabel(tag)}”.`
-                    : platform === "all"
-                      ? "Keep your first good find."
-                      : `No ${title} links yet.`}
-              </h2>
-              <p>
-                {q
-                  ? "Try a different title, keyword, or URL."
-                  : "Paste a link. Pick it up whenever you need it."}
-              </p>
-              {q ? (
-                <Link
-                  href={libraryHref("", platform, 1, tag)}
-                  className="button button-secondary"
-                >
-                  Clear search
-                </Link>
-              ) : (
-                <button
-                  className="button button-primary"
-                  onClick={() => setOpen(true)}
-                >
-                  <Plus size={17} aria-hidden="true" />
-                  Add a link
-                </button>
-              )}
-            </div>
-          )}
-          {!error && (page > 1 || total > PAGE_SIZE) && (
-            <nav className="pagination" aria-label="Library pages">
-              {page > 1 ? (
-                <Link
-                  className="button button-secondary"
-                  href={libraryHref(q, platform, page - 1, tag)}
-                >
-                  <ChevronLeft size={16} />
-                  Previous
-                </Link>
-              ) : (
-                <span />
-              )}
-              <span>
-                Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}
-              </span>
-              {page * PAGE_SIZE < total ? (
-                <Link
-                  className="button button-secondary"
-                  href={libraryHref(q, platform, page + 1, tag)}
-                >
-                  Next
-                  <ChevronRight size={16} />
-                </Link>
-              ) : (
-                <span />
-              )}
-            </nav>
-          )}
-        </main>
-        <footer className="app-footer">
-          <span>Private library</span>
-          <span>stash.</span>
-        </footer>
+            </section>
+          ))
+        ) : (
+          <div className="empty-state">
+            <span className="empty-icon">
+              <Bookmark size={25} />
+            </span>
+            <h2>
+              {q || activeFilters
+                ? "No matching links."
+                : "Save your first link."}
+            </h2>
+            <p>
+              {q || activeFilters
+                ? "Try fewer filters or a different search."
+                : "Keep a good find. Add context whenever you need it."}
+            </p>
+            {q || activeFilters ? (
+              <Link className="button button-secondary" href="/library">
+                Show all links
+              </Link>
+            ) : (
+              <button
+                className="button button-primary"
+                disabled={!ready}
+                onClick={() => setOpen(true)}
+              >
+                Add a link
+              </button>
+            )}
+          </div>
+        )}
       </div>
+      {!error && (page > 1 || total > PAGE_SIZE) && (
+        <nav className="pagination" aria-label="Library pages">
+          {page > 1 ? (
+            <Link
+              className="button button-secondary"
+              href={href(q, platform, selectedTags, page - 1)}
+            >
+              <ChevronLeft size={16} />
+              Previous
+            </Link>
+          ) : (
+            <span />
+          )}
+          <span>
+            Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}
+          </span>
+          {page * PAGE_SIZE < total ? (
+            <Link
+              className="button button-secondary"
+              href={href(q, platform, selectedTags, page + 1)}
+            >
+              Next
+              <ChevronRight size={16} />
+            </Link>
+          ) : (
+            <span />
+          )}
+        </nav>
+      )}
       <LinkDialog
-        key={tag}
-        tagOptions={tagOptions}
-        defaultTags={tag ? [tag] : []}
+        key={selectedTags.join(",")}
         open={open}
         onOpenChange={setOpen}
+        tagOptions={catalog}
+        defaultTags={selectedTags}
         onSaved={(item) => {
-          notify("Link saved.");
+          refresh("Link saved.");
           void analyze(item.id);
-          if (q || platform !== "all" || page > 1 || tag)
-            router.push("/library");
+          if (q || activeFilters || page > 1) router.push("/library");
         }}
       />
-    </div>
+      {managing && (
+        <TagManager
+          open={managing}
+          onOpenChange={setManaging}
+          tags={catalog}
+          onChanged={(change) => {
+            if (change && selectedTags.includes(change.from)) {
+              const next = selectedTags.flatMap((value) =>
+                value === change.from
+                  ? change.to
+                    ? [change.to]
+                    : []
+                  : [value],
+              );
+              router.replace(href(q, platform, [...new Set(next)]));
+            } else router.refresh();
+          }}
+        />
+      )}
+    </WorkspaceShell>
   );
 }

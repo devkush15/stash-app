@@ -5,6 +5,7 @@ import { isAiConfigured } from "./env";
 export async function generateJson(
   instruction: string,
   data: unknown,
+  maxOutputTokens = 1000,
 ): Promise<unknown> {
   if (!isAiConfigured()) throw new Error("AI is not configured");
   const payload = JSON.stringify(data);
@@ -32,7 +33,7 @@ export async function generateJson(
         contents: [{ role: "user", parts: [{ text: payload }] }],
         generationConfig: {
           responseMimeType: "application/json",
-          maxOutputTokens: 1000,
+          maxOutputTokens,
           temperature: 0.1,
         },
       }),

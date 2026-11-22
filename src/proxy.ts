@@ -5,5 +5,5 @@ export function proxy(request: NextRequest) {
   return response;
 }
 export const config = {
-  matcher: ["/library/:path*", "/sign-in", "/api/:path*"],
+  matcher: ["/library/:path*", "/ask/:path*", "/sign-in", "/api/:path*"],
 };

@@ -53,7 +53,7 @@ export async function POST(
             ...metadata,
             processing_status: "limited",
             indexing_note:
-              "Content could not be accessed. Add a description to organize this link.",
+              "Content could not be accessed. Add a note to organize this link.",
           }),
         });
       if (!isAiConfigured())
@@ -75,22 +75,45 @@ export async function POST(
         });
       const organized = await organize(content);
       return json({
-        item: await store.update(user.id, id, {
-          ...metadata,
-          ...organized,
-          title: item.title_edited ? item.title : organized.title,
-          tags: item.tags_edited ? item.tags : organized.tags,
-          ai_processed_at: new Date().toISOString(),
-          processing_status: content.level === "metadata" ? "limited" : "ready",
-          indexing_note:
-            content.level === "metadata"
-              ? item.user_note
-                ? "Organized using your description and available metadata. Full content was not analyzed."
-                : "Only public metadata was available. Full content was not analyzed."
-              : null,
-        }),
+        item: await store.update(
+          user.id,
+          id,
+          {
+            ...metadata,
+            ...organized,
+            title: item.title_edited ? item.title : organized.title,
+            tags: item.tags_edited ? item.tags : organized.tags,
+            ai_processed_at: new Date().toISOString(),
+            processing_status:
+              content.level === "metadata" ? "limited" : "ready",
+            indexing_note:
+              content.level === "metadata"
+                ? item.user_note
+                  ? "Organized using your description and available metadata. Full content was not analyzed."
+                  : "Only public metadata was available. Full content was not analyzed."
+                : null,
+          },
+          true,
+        ),
       });
-    } catch {
+    } catch (error) {
+      const known = [
+        "AI free capacity exhausted",
+        "AI provider unavailable",
+        "No AI response",
+        "Invalid AI organization",
+        "Invalid summary",
+        "Invalid AI response",
+        "AI input is too large",
+      ];
+      console.warn(
+        "Link analysis failed:",
+        error instanceof Error && known.includes(error.message)
+          ? error.message
+          : error instanceof Error
+            ? error.name
+            : "Unknown error",
+      );
       return json({
         item: await store.update(user.id, id, {
           processing_status: "failed",

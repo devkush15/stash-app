@@ -62,12 +62,14 @@ Do not put credentials in a `NEXT_PUBLIC_` variable or commit them. Keep databas
    ```
 
 3. This version uses `gemini-3.5-flash-lite`, currently listed with a free input/output tier. Actual request and token limits are project-specific; check https://aistudio.google.com/rate-limit. Do not enable billing to make a quota error disappear.
-4. The backend caps AI attempts at 5 indexed saves and 20 searches per account/day, with a shared ceiling of 50 calls/day. Failed calls also count; keyword search does not consume AI usage. Limits reset at UTC midnight. Provider exhaustion returns a visible fallback without losing the link.
+4. The backend caps AI attempts at 5 indexed saves and 20 Ask/AI retrieval requests per account/day, with a shared ceiling of 50 calls/day. Failed calls also count; keyword search does not consume AI usage. Limits reset at UTC midnight. Provider exhaustion returns a visible fallback without losing the link.
 5. If credentials or free capacity are unavailable, link saving, public metadata extraction, ordinary search and deletion still work. The UI says when analysis is limited, deferred, or unavailable. It never substitutes a fake AI summary.
 
 Free-tier requests may be used by Google to improve its products. The selected link's public text/metadata and optional user description are sent for organization. Search sends bounded metadata and descriptions from the current user's own library. API keys never reach the browser or prompts. See https://aistudio.google.com/docs/pricing and https://aistudio.google.com/docs/rate-limits.
 
 ## How saving and search work
+
+Login, Library and Ask share a light/dark toggle. Appearance starts from the device preference; an explicit choice is stored locally on that browser and applied before the page paints. No account setting or database column is needed.
 
 The save API persists the URL immediately. The browser then calls a separate synchronous analysis API request; there is no background infrastructure. If a tab closes before analysis starts, use **Analyze** on the saved link later. Analysis uses a short database lease to prevent overlapping calls and can be retried if interrupted.
 
@@ -81,13 +83,15 @@ Instagram post/Reel permalinks keep their case-sensitive shortcode, canonicalize
 
 WhatsApp no longer has a separate source segment. Existing WhatsApp links remain available under Websites, without deleting or rewriting saved links.
 
-The library groups each link under its first tag, with tag pills filtering all links that contain the selected tag. The plus button creates a private, persistent custom tag; users can select up to eight tags while saving or editing. Custom catalogs use one JSON column on the existing users table (up to 32 custom tags), with no new service or database. Longer tag lists collapse behind More to keep the library visible on mobile. YouTube, Instagram and X have inline brand marks beside their names; the library uses colored topic bands and compact rows rather than separate cards.
+The Library defaults to a compact All Links list with no duplicate records. Search matches saved text and notes without AI credits; Sort by controls ordering, and Filters reveals sources, categories, multiple tags (match any), and optional grouped browsing. The user-selected Library/Ask tabs coexist with the familiar desktop source sidebar; phones expose the same source choices in Filters. Tags are compact colored context on each row, with create/rename/delete under Manage tags. Removing a tag preserves its links and notes. Item actions live in an overflow menu, with platform logos rather than repeated platform text.
 
-When content is inaccessible, the compact card says **Instagram post** or **Instagram Reel**, with **Add description** instead of a repeated Analyze prompt. Edit a link to add your own optional description or change title/tags. Descriptions are private library notes, not verified source captions; they participate in both keyword and AI search. Only a changed description enables reorganization; title/tag edits preserve manual choices without spending another AI save. A new description can generate title/category/tags but never an invented summary of the unseen post. Deferred/failed AI calls with useful content can still be retried normally.
+Ask Stash is a separate workflow backed by `/api/ask`. It retrieves at most 30 private candidates (keyword matches first, then recent records), selects bounded text/notes within a 19.5 KiB evidence budget, and makes one call to the existing Gemini provider. Each answer point must include a saved record ID, named evidence field, and an exact supporting excerpt; unsupported IDs/quotes and unseen-media summaries are rejected. References link to actual saved originals. Personal notes are labelled separately from public text. If AI is unavailable, matching sources remain available without a fabricated answer. There is no chat-history database, vector store, or extra backend.
+
+When content is inaccessible, the compact card says **Instagram post** or **Instagram Reel**, with **Add a note** instead of a repeated Analyze prompt. Edit a link to add your own optional description or change title/tags. Descriptions are private library notes, not verified source captions; they participate in both keyword and AI search. Only a changed description enables reorganization; title/tag edits preserve manual choices without spending another AI save. A new description can generate title/category/tags but never an invented summary of the unseen post. Deferred/failed AI calls with useful content can still be retried normally.
 
 Extraction accepts only HTTP(S) on standard ports, rejects literal IPs and private/reserved DNS answers, pins validated DNS addresses to the HTTP connection, revalidates each redirect, and bounds time, redirects, headers, and response size. Normal responses remain bounded at 512 KiB. No login cookies, paywall bypasses, or platform access credentials are used.
 
-Search first ranks the account's stored titles, descriptions, summaries, tags and available text by useful query words. When AI is available, it reranks up to 40 candidates by semantic relevance. The account library is bounded at 500 links for this prototype. AI results are accepted only when their IDs belong to the supplied private candidates. No new saved items or URLs can be generated by search. Keyword results remain available during AI failures.
+The account library is bounded at 500 links, with 24 entries per page. Keyword search, filtering and sorting run on the backend before pagination. Group by tag may show the same saved record in more than one relevant group; All Links and the underlying SQLite table remain unique. Manual title/tag changes do not trigger AI; changed notes do. All operations, including tag catalog changes and Ask retrieval, remain scoped to the current session's user ID.
 
 ## Checks
 

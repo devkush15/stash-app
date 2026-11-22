@@ -76,6 +76,7 @@ export function LinkDialog({
               {item?.indexing_note || "Save a URL to your private library."}
             </Dialog.Description>
             <form
+              method="post"
               ref={formRef}
               onSubmit={(event) => {
                 event.preventDefault();
@@ -159,7 +160,7 @@ export function LinkDialog({
               </div>
               <div>
                 <label htmlFor="link-note">
-                  Description <span className="optional">Optional</span>
+                  Notes <span className="optional">Optional</span>
                 </label>
                 <textarea
                   id="link-note"
@@ -168,7 +169,7 @@ export function LinkDialog({
                   rows={3}
                   maxLength={MAX_NOTE_LENGTH}
                   defaultValue={item?.user_note || ""}
-                  placeholder="What would you like to remember?"
+                  placeholder="Add your context, or a caption you can access."
                   disabled={pending}
                 />
               </div>

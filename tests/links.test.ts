@@ -79,7 +79,7 @@ describe("Search and pagination", () => {
   it("validates page and source query parameters", () => {
     expect(
       libraryParams({ page: "-1", source: "unknown", q: "  saved  " }),
-    ).toEqual({ page: 1, platform: "all", q: "saved", tag: "" });
+    ).toMatchObject({ page: 1, platform: "all", q: "saved", tag: "" });
     expect(libraryParams({ page: "Infinity", q: ["one", "two"] }).page).toBe(1);
     expect(libraryParams({ page: "1.5" }).page).toBe(1);
     expect(libraryParams({ q: "a".repeat(201) }).q).toHaveLength(200);

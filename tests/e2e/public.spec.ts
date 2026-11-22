@@ -1,4 +1,32 @@
 import { expect, test } from "@playwright/test";
+test("theme follows the device initially and remembers an explicit choice", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/sign-in");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(25, 26, 29)",
+  );
+  const toggle = page.getByRole("button", {
+    name: "Switch to light mode",
+    exact: true,
+  });
+  await expect(toggle).toBeEnabled();
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page
+    .getByRole("button", { name: "Switch to dark mode", exact: true })
+    .click();
+  await expect(page.getByLabel("Username", { exact: true })).toHaveCSS(
+    "background-color",
+    "rgb(36, 37, 41)",
+  );
+});
 for (const width of [320, 390, 768, 1440])
   test(`sign-in fits ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });

@@ -10,7 +10,7 @@ for (const width of [320, 390, 768, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`/dev-qa?data=${data}`);
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-        "All links",
+        "Library",
       );
       expect(
         await page.evaluate(
@@ -22,7 +22,7 @@ for (const width of [320, 390, 768, 1440]) {
       ).toBeVisible();
       if (data === "empty")
         await expect(
-          page.getByRole("heading", { name: "Keep your first good find." }),
+          page.getByRole("heading", { name: "Save your first link." }),
         ).toBeVisible();
       else {
         expect(await page.getByTestId("saved-link").count()).toBe(
@@ -31,8 +31,11 @@ for (const width of [320, 390, 768, 1440]) {
         const cardLinks = page.getByTestId("saved-link").getByRole("link");
         expect(await cardLinks.first().getAttribute("target")).toBe("_blank");
         await page
-          .getByRole("button", { name: /^Delete / })
+          .getByRole("button", { name: /^Actions for / })
           .first()
+          .click();
+        await page
+          .getByRole("menuitem", { name: "Delete link", exact: true })
           .click();
         await expect(page.getByRole("dialog")).toBeVisible();
         await page
@@ -84,3 +87,52 @@ test("invalid URL feedback retains the pasted link and title", async ({
   );
   await expect(page.getByLabel("Title Optional")).toHaveValue("Keep my title");
 });
+
+test("large library stays paginated", async ({ page }) => {
+  await page.goto("/dev-qa?data=many");
+  await expect(page.getByTestId("saved-link")).toHaveCount(24);
+  await expect(
+    page.getByRole("navigation", { name: "Library pages" }),
+  ).toContainText("Page 1 of 21");
+});
+
+for (const width of [320, 1440]) {
+  test(`dark library and capture dialog at ${width}px`, async ({
+    page,
+  }, info) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto("/dev-qa?data=worst");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(page.locator(".workspace-shell")).toHaveCSS(
+      "background-color",
+      "rgb(25, 26, 29)",
+    );
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: info.outputPath(`dark-library-${width}.png`),
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "Add link", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCSS(
+      "background-color",
+      "rgb(36, 37, 41)",
+    );
+    await page.screenshot({
+      path: info.outputPath(`dark-dialog-${width}.png`),
+      fullPage: true,
+    });
+    await page.keyboard.press("Escape");
+    await page
+      .getByRole("button", { name: "Switch to light mode", exact: true })
+      .click();
+    await expect(page.locator(".workspace-shell")).toHaveCSS(
+      "background-color",
+      "rgb(249, 248, 245)",
+    );
+  });
+}

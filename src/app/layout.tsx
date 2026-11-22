@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { themeBootstrap } from "@/lib/theme";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,15 +13,18 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
-  themeColor: "#fafafa",
-  colorScheme: "light",
+  themeColor: "#f9f8f5",
+  colorScheme: "light dark",
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="light" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
+      </head>
       <body>{children}</body>
     </html>
   );

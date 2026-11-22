@@ -2,7 +2,8 @@ import { Library } from "@/components/library";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { libraryParams, PAGE_SIZE } from "@/lib/links";
-import { keywordSearch } from "@/lib/search";
+import { filterLibrary } from "@/lib/library-view";
+import type { SavedItem } from "@/lib/database.types";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Library" };
 export default async function LibraryPage({
@@ -11,33 +12,38 @@ export default async function LibraryPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { user } = await requireUser();
-  const { q, platform, page, tag } = libraryParams(await searchParams);
-  let items: import("@/lib/database.types").SavedItem[] = [];
-  let error = false;
-  let tags: string[] = [];
+  const params = libraryParams(await searchParams);
+  let items: SavedItem[] = [],
+    tags: string[] = [],
+    categories: string[] = [],
+    error = false;
   try {
     const all = await db().list(user.id);
     tags = await db().tagCatalog(user.id, all);
-    const filtered = all.filter(
-      (item) =>
-        (platform === "all" || item.platform === platform) &&
-        (!tag || item.tags.includes(tag)),
-    );
-    items = q ? keywordSearch(filtered, q) : filtered;
+    categories = [
+      ...new Set(
+        all
+          .map((item) => item.category)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    ].sort();
+    items = filterLibrary(all, params);
   } catch {
     error = true;
   }
   return (
     <Library
-      items={items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)}
+      items={items.slice(
+        (params.page - 1) * PAGE_SIZE,
+        params.page * PAGE_SIZE,
+      )}
       email={user.username}
       total={items.length}
-      q={q}
-      platform={platform}
-      page={page}
-      error={error}
+      {...params}
+      selectedTags={params.tags}
       tags={tags}
-      tag={tag}
+      categories={categories}
+      error={error}
     />
   );
 }

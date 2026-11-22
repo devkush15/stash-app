@@ -3,9 +3,11 @@
 import { useState, useTransition } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { ChevronDown, LogOut, UserRound } from "lucide-react";
+import { useClientReady } from "@/lib/use-client-ready";
 import { api } from "@/lib/client-api";
 
 export function AccountMenu({ email }: { email: string }) {
+  const ready = useClientReady();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
   return (
@@ -14,7 +16,7 @@ export function AccountMenu({ email }: { email: string }) {
         <Menu.Trigger
           className="account-trigger"
           aria-label="Account menu"
-          disabled={pending}
+          disabled={pending || !ready}
         >
           <span className="avatar">
             <UserRound size={17} aria-hidden="true" />

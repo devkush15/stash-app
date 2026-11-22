@@ -185,6 +185,39 @@ describe.sequential("Private persistent SQLite libraries", () => {
     expect(await new Store(client).tagCatalog(alice)).toContain("pitch deck");
     await store.delete(alice, saved.id);
   });
+  it("renames, merges and removes only this user's tags without deleting links or notes", async () => {
+    await store.addTag(alice, "old tag");
+    await store.addTag(alice, "new tag");
+    const link = {
+      original_url: "https://example.com/tag-change",
+      normalized_url: "https://example.com/tag-change",
+      platform: "website",
+    };
+    const own = await store.save(alice, link, null, "My retained note", [
+      "old tag",
+      "new tag",
+    ]);
+    const other = await store.save(bob, link, null, null, ["old tag"]);
+    expect((await store.changeTag(alice, "old tag", "new tag")).affected).toBe(
+      1,
+    );
+    expect((await store.get(alice, own.id))?.tags).toEqual(["new tag"]);
+    expect((await store.get(bob, other.id))?.tags).toEqual(["old tag"]);
+    await store.changeTag(alice, "new tag", null);
+    expect((await store.get(alice, own.id))?.tags).toEqual([]);
+    expect((await store.get(alice, own.id))?.user_note).toBe(
+      "My retained note",
+    );
+    await store.update(
+      alice,
+      own.id,
+      { tags: ["old tag"], title: "AI title" },
+      true,
+    );
+    expect((await store.get(alice, own.id))?.tags).toEqual([]);
+    await store.delete(alice, own.id);
+    await store.delete(bob, other.id);
+  });
 });
 
 it("upgrades existing saved links once without losing their original URLs or custom titles", async () => {

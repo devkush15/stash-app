@@ -47,6 +47,11 @@ test("register, save, persist, search, isolate, delete, logout and login", async
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(page.getByTestId("saved-link")).toHaveCount(1);
   await register(other, "bob_" + suffix);
+  const privateAsk = await b.request.post("/api/ask", {
+    headers: { origin: baseURL! },
+    data: { question: "Find the pasta recipe" },
+  });
+  expect((await privateAsk.json()).sources).toEqual([]);
   const forbiddenDelete = await b.request.delete(`/api/items/${saved.id}`, {
     headers: { origin: baseURL! },
   });
@@ -59,7 +64,10 @@ test("register, save, persist, search, isolate, delete, logout and login", async
     0,
   );
   await page
-    .getByRole("button", { name: "Delete Pasta recipe", exact: true })
+    .getByRole("button", { name: "Actions for Pasta recipe", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Delete link", exact: true })
     .click();
   await page.getByRole("button", { name: "Delete link", exact: true }).click();
   await expect(page.getByTestId("saved-link")).toHaveCount(0);

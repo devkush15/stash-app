@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PAGE_SIZE } from "../../src/lib/links";
 import { Library } from "../../src/components/library";
 import type { SavedItem, Platform } from "../../src/lib/database.types";
 
@@ -85,24 +86,50 @@ export default async function Preview({
       "website",
     ),
   ];
+  stress[0].user_note =
+    "A multilingual accessibility reference for the upcoming product review. "
+      .repeat(16)
+      .slice(0, 1000);
+  stress[0].tags = [
+    "customer-feedback-enterprise-onboarding",
+    "accessibility",
+    "design-review",
+    "internationalization",
+    "product-research",
+    "mobile",
+    "日本語",
+    "👩🏽‍💻 engineering",
+  ].map((tag) => tag.slice(0, 40));
+  stress[1].processing_status = "limited";
+  stress[1].indexing_note =
+    "Content could not be accessed. Add a note to organize this link.";
+  stress[4].user_note = "ملاحظات عن تصميم واجهات استخدام بسيطة وسهلة الوصول";
+  const many = Array.from({ length: 500 }, (_, i) =>
+    base(
+      i + 1,
+      `Saved reference ${i + 1}`,
+      `https://example.com/references/${i + 1}`,
+      "website",
+    ),
+  );
   const items =
-    mode === "empty"
-      ? []
-      : mode === "one"
-        ? demo.slice(0, 1)
-        : worst
-          ? stress
-          : demo;
+    mode === "many"
+      ? many.slice(0, PAGE_SIZE)
+      : mode === "empty"
+        ? []
+        : mode === "one"
+          ? demo.slice(0, 1)
+          : worst
+            ? stress
+            : demo;
   return (
     <>
       <Library
         email={
-          worst
-            ? "bartholomew.fitzgerald@northwind-industries-holdings.example.com"
-            : "you@example.com"
+          worst ? "aleksandra.wisniewska-kowalczyk".slice(0, 30) : "devanshi"
         }
         items={items}
-        total={items.length}
+        total={mode === "many" ? 500 : items.length}
         q=""
         platform="all"
         page={1}
@@ -121,9 +148,11 @@ export default async function Preview({
           borderRadius: 8,
           zIndex: 70,
           fontSize: 12,
+          maxWidth: "calc(100vw - 16px)",
+          overflowX: "auto",
         }}
       >
-        {["demo", "worst", "empty", "one"].map((data) => (
+        {["demo", "worst", "empty", "one", "many"].map((data) => (
           <Link
             href={`?data=${data}`}
             key={data}
@@ -138,7 +167,9 @@ export default async function Preview({
               ? "Demo data"
               : data === "worst"
                 ? "Worst case"
-                : data}
+                : data === "many"
+                  ? "500 links"
+                  : data}
           </Link>
         ))}
       </nav>

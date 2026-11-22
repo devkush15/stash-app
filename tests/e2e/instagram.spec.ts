@@ -30,7 +30,7 @@ test("Instagram fallback, canonical duplicates, editing and description search",
   const card = page.getByTestId("saved-link");
   await expect(card.getByRole("heading")).toHaveText("Instagram Reel");
   await expect(
-    card.getByRole("button", { name: "Add description", exact: true }),
+    card.getByRole("button", { name: "Add a note", exact: true }),
   ).toBeVisible();
   await expect(card).not.toContainText("igsh");
   await expect(card).not.toContainText("instagram.com");
@@ -55,12 +55,10 @@ test("Instagram fallback, canonical duplicates, editing and description search",
   await expect(
     card.getByRole("button", { name: "Analyze", exact: true }),
   ).toHaveCount(0);
-  await card
-    .getByRole("button", { name: "Add description", exact: true })
-    .click();
+  await card.getByRole("button", { name: "Add a note", exact: true }).click();
   await page.getByLabel("Title Optional").fill("Dinner idea");
   await page
-    .getByLabel("Description Optional")
+    .getByLabel("Notes Optional")
     .fill("My reminder to cook tomato pasta with basil for dinner.");
   for (const tag of ["weeknight", "dinner"]) {
     await page
@@ -74,9 +72,10 @@ test("Instagram fallback, canonical duplicates, editing and description search",
   await expect(card.getByRole("heading")).toHaveText("Dinner idea");
   await page.reload();
   await page
-    .getByRole("button", { name: "Edit Dinner idea", exact: true })
+    .getByRole("button", { name: "Actions for Dinner idea", exact: true })
     .click();
-  await expect(page.getByLabel("Description Optional")).toHaveValue(
+  await page.getByRole("menuitem", { name: "Edit link", exact: true }).click();
+  await expect(page.getByLabel("Notes Optional")).toHaveValue(
     "My reminder to cook tomato pasta with basil for dinner.",
   );
   await expect(

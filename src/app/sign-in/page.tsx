@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Brand } from "@/components/brand";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { SignInForm } from "@/components/sign-in-form";
 import { isDatabaseConfigured } from "@/lib/env";
 import { currentUser } from "@/lib/auth";
@@ -15,6 +16,7 @@ export default async function SignInPage() {
         <Link href="/" className="brand-link">
           <Brand />
         </Link>
+        <ThemeToggle />
       </header>
       <main className="auth-main">
         <div className="auth-content">

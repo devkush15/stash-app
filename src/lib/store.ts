@@ -106,7 +106,12 @@ export class Store {
     });
     return (await this.get(userId, id))!;
   }
-  async update(userId: string, id: string, values: Partial<SavedItem>) {
+  async update(
+    userId: string,
+    id: string,
+    values: Partial<SavedItem>,
+    preserveEdits = false,
+  ) {
     const allowed = [
       "title",
       "title_edited",
@@ -129,7 +134,7 @@ export class Store {
     if (!entries.length) return this.get(userId, id);
     await this.ready();
     await this.client.execute({
-      sql: `UPDATE saved_items SET ${entries.map(([key]) => `${key}=?`).join(",")},updated_at=? WHERE user_id=? AND id=?`,
+      sql: `UPDATE saved_items SET ${entries.map(([key]) => (preserveEdits && (key === "title" || key === "tags") ? `${key}=CASE WHEN ${key}_edited=1 THEN ${key} ELSE ? END` : `${key}=?`)).join(",")},updated_at=? WHERE user_id=? AND id=?`,
       args: [
         ...entries.map(
           ([key, value]) =>
@@ -218,6 +223,59 @@ export class Store {
       args: [userId, id],
     });
     return r.rowsAffected > 0;
+  }
+  async changeTag(userId: string, from: string, to: string | null) {
+    await this.ready();
+    const tx = await this.client.transaction("write");
+    try {
+      const user = await tx.execute({
+        sql: "SELECT custom_tags FROM users WHERE id=?",
+        args: [userId],
+      });
+      const custom = JSON.parse(
+        String(user.rows[0]?.custom_tags || "[]"),
+      ) as string[];
+      const changed = [
+        ...new Set(
+          custom.flatMap((tag) => (tag === from ? (to ? [to] : []) : [tag])),
+        ),
+      ];
+      await tx.execute({
+        sql: "UPDATE users SET custom_tags=? WHERE id=?",
+        args: [JSON.stringify(changed), userId],
+      });
+      const records = await tx.execute({
+        sql: "SELECT id,tags FROM saved_items WHERE user_id=?",
+        args: [userId],
+      });
+      const updates: { sql: string; args: InValue[] }[] = [];
+      for (const record of records.rows) {
+        const tags = JSON.parse(String(record.tags)) as string[];
+        if (!tags.includes(from)) continue;
+        const next = [
+          ...new Set(
+            tags.flatMap((tag) => (tag === from ? (to ? [to] : []) : [tag])),
+          ),
+        ];
+        updates.push({
+          sql: "UPDATE saved_items SET tags=?,tags_edited=1,updated_at=? WHERE user_id=? AND id=?",
+          args: [
+            JSON.stringify(next),
+            new Date().toISOString(),
+            userId,
+            record.id,
+          ],
+        });
+      }
+      if (updates.length) await tx.batch(updates);
+      await tx.commit();
+      return { affected: updates.length };
+    } catch (error) {
+      await tx.rollback();
+      throw error;
+    } finally {
+      tx.close();
+    }
   }
   async limit(key: string, cap: number, windowMs: number) {
     await this.ready();

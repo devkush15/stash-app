@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "A private library for the links you want to keep.",
   "scripts": {
-    "dev": "next dev --hostname 0.0.0.0",
+    "dev": "next dev --webpack --hostname 0.0.0.0",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "lint": "eslint .",

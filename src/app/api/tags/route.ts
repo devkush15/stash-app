@@ -29,3 +29,30 @@ export async function POST(request: Request) {
     return apiError(error);
   }
 }
+
+export async function PATCH(request: Request) {
+  return change(request, false);
+}
+export async function DELETE(request: Request) {
+  return change(request, true);
+}
+async function change(request: Request, remove: boolean) {
+  try {
+    sameOrigin(request);
+    const user = await apiUser(request),
+      body = await readJson(request);
+    const from =
+      typeof body.from === "string" ? body.from.trim().toLowerCase() : "";
+    const to = remove
+      ? null
+      : typeof body.to === "string"
+        ? body.to.trim().toLowerCase().replace(/\s+/g, " ")
+        : "";
+    if (!from || from.length > 40 || (!remove && (!to || to.length > 40)))
+      throw new HttpError(400, "Use a tag with 1–40 characters.");
+    const result = await db().changeTag(user.id, from, to);
+    return json({ ...result, tags: await db().tagCatalog(user.id) });
+  } catch (error) {
+    return apiError(error);
+  }
+}

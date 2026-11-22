@@ -158,7 +158,21 @@ export function libraryParams(
   const single = (value: string | string[] | undefined) =>
     typeof value === "string" ? value : "";
   const q = single(params.q).trim().slice(0, 200);
-  const tag = single(params.tag).trim().toLowerCase().slice(0, 40);
+  const tags = [
+    ...new Set(
+      (Array.isArray(params.tag) ? params.tag : [single(params.tag)])
+        .map((value) => value.trim().toLowerCase().slice(0, 40))
+        .filter(Boolean),
+    ),
+  ].slice(0, 8);
+  const tag = tags[0] || "";
+  const sort = ["newest", "oldest", "title"].includes(single(params.sort))
+    ? single(params.sort)
+    : "newest";
+  const view = ["all", "tags", "categories"].includes(single(params.view))
+    ? single(params.view)
+    : "all";
+  const category = single(params.category).trim().slice(0, 50);
   const source = single(params.source);
   const platform = sources.some((s) => s.value === source)
     ? (source as Platform | "all")
@@ -166,14 +180,25 @@ export function libraryParams(
   const rawPage = Number(single(params.page));
   const page =
     Number.isSafeInteger(rawPage) && rawPage > 0 ? Math.min(rawPage, 10000) : 1;
-  return { q, platform, page, tag };
+  return { q, platform, page, tag, tags, sort, view, category };
 }
 
-export function libraryHref(q: string, platform: string, page = 1, tag = "") {
+export function libraryHref(
+  q: string,
+  platform: string,
+  page = 1,
+  tag: string | string[] = "",
+  options: { sort?: string; view?: string; category?: string } = {},
+) {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   if (platform !== "all") params.set("source", platform);
   if (page > 1) params.set("page", String(page));
-  if (tag) params.set("tag", tag);
+  for (const value of typeof tag === "string" ? (tag ? [tag] : []) : tag)
+    params.append("tag", value);
+  if (options.sort && options.sort !== "newest")
+    params.set("sort", options.sort);
+  if (options.view && options.view !== "all") params.set("view", options.view);
+  if (options.category) params.set("category", options.category);
   return `/library${params.size ? `?${params}` : ""}`;
 }

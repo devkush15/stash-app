@@ -1,9 +1,11 @@
 "use client";
 import { useState } from "react";
 import { LoaderCircle } from "lucide-react";
+import { useClientReady } from "@/lib/use-client-ready";
 import { api } from "@/lib/client-api";
 
 export function SignInForm({ configured }: { configured: boolean }) {
+  const ready = useClientReady();
   const [register, setRegister] = useState(false),
     [pending, setPending] = useState(false),
     [error, setError] = useState("");
@@ -17,6 +19,7 @@ export function SignInForm({ configured }: { configured: boolean }) {
       )}
       <form
         className="auth-form"
+        method="post"
         onSubmit={async (event) => {
           event.preventDefault();
           const form = new FormData(event.currentTarget);
@@ -52,7 +55,7 @@ export function SignInForm({ configured }: { configured: boolean }) {
           autoComplete="username"
           autoCapitalize="none"
           spellCheck={false}
-          disabled={pending || !configured}
+          disabled={pending || !configured || !ready}
         />
         <label htmlFor="password">Password</label>
         <input
@@ -64,7 +67,7 @@ export function SignInForm({ configured }: { configured: boolean }) {
           minLength={8}
           maxLength={128}
           autoComplete={register ? "new-password" : "current-password"}
-          disabled={pending || !configured}
+          disabled={pending || !configured || !ready}
           aria-describedby={error ? "auth-error" : undefined}
         />
         {error && (
@@ -74,7 +77,7 @@ export function SignInForm({ configured }: { configured: boolean }) {
         )}
         <button
           className="button button-primary w-full"
-          disabled={pending || !configured}
+          disabled={pending || !configured || !ready}
           type="submit"
         >
           {pending && (
@@ -85,7 +88,7 @@ export function SignInForm({ configured }: { configured: boolean }) {
       </form>
       <button
         className="auth-switch"
-        disabled={pending}
+        disabled={pending || !ready}
         onClick={() => {
           setRegister(!register);
           setError("");

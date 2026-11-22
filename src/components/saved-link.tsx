@@ -2,7 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { ExternalLink, Pencil, Trash2, LoaderCircle } from "lucide-react";
+import { Menu } from "@base-ui/react/menu";
+import {
+  ExternalLink,
+  Pencil,
+  Trash2,
+  LoaderCircle,
+  MoreHorizontal,
+} from "lucide-react";
+import { tagLabel, tagTone } from "./tag-picker";
+import { useClientReady } from "@/lib/use-client-ready";
 import { api } from "@/lib/client-api";
 import { SourceIcon } from "./source-icon";
 import { LinkDialog } from "./link-dialog";
@@ -16,6 +25,7 @@ export function SavedLink({
   onAnalyze,
   analyzing = false,
   tagOptions = [],
+  onTag,
 }: {
   item: SavedItem;
   onDeleted: () => void;
@@ -23,7 +33,9 @@ export function SavedLink({
   onAnalyze?: (id: string) => void;
   analyzing?: boolean;
   tagOptions?: string[];
+  onTag?: (tag: string) => void;
 }) {
+  const ready = useClientReady();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
@@ -44,10 +56,10 @@ export function SavedLink({
   const status = analyzing
     ? "Analyzing…"
     : needsDescription
-      ? "Add description"
+      ? "Add a note"
       : item.processing_status === "limited"
         ? item.user_note
-          ? "From your description"
+          ? "From your notes"
           : "Metadata only"
         : item.processing_status === "deferred"
           ? "AI deferred"
@@ -56,79 +68,137 @@ export function SavedLink({
             : "";
   return (
     <article className="saved-link" data-testid="saved-link">
-      <a
-        className="saved-link-main"
-        href={originalLink(item)}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label={`Open ${title} (opens in a new tab)`}
-      >
-        <div className="card-source-row">
-          <span className={`source-mark source-${item.platform}`}>
-            <SourceIcon platform={item.platform} />
-          </span>
-          <span className="card-source">
-            {source === "Websites" ? "Website" : source}
-          </span>
-          <ExternalLink
-            className="external-icon"
-            size={15}
-            aria-hidden="true"
-          />
-        </div>
-        <h2 className="card-title" dir="auto" title={title}>
-          {title}
-        </h2>
-      </a>
-      <div className="card-footer">
-        <div className="card-details">
-          {item.category && (
-            <span className="card-category">{item.category}</span>
-          )}
-          {status &&
-            (needsDescription ? (
-              <button
-                className="card-status status-action"
-                onClick={() => setEditing(true)}
-              >
-                {status}
-              </button>
-            ) : (
-              <span
-                className="card-status"
-                role="status"
-                title={item.indexing_note || undefined}
-              >
-                {status}
-              </span>
-            ))}
-          {retry && onAnalyze && (
-            <button
-              className="analyze-button"
-              disabled={analyzing}
-              onClick={() => onAnalyze(item.id)}
+      <div role="img" className="entry-logo" title={source} aria-label={source}>
+        <SourceIcon platform={item.platform} />
+      </div>
+      <div className="entry-content">
+        <a
+          className="entry-title"
+          href={originalLink(item)}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open ${title} (opens in a new tab)`}
+        >
+          <h3 className="card-title" dir="auto" title={title}>
+            {title}
+          </h3>
+          <ExternalLink size={14} aria-hidden="true" />
+        </a>
+        {item.platform === "website" &&
+          title !==
+            new URL(item.original_url).hostname.replace(/^www\./, "") && (
+            <a
+              className="entry-domain"
+              href={originalLink(item)}
+              target="_blank"
+              rel="noopener noreferrer"
             >
-              {analyzing ? (
-                <LoaderCircle
-                  className="spinner"
-                  size={14}
-                  aria-label="Analyzing"
-                />
-              ) : (
-                "Analyze"
-              )}
-            </button>
+              {new URL(item.original_url).hostname.replace(/^www\./, "")}
+            </a>
           )}
-        </div>
-        <div className="card-actions">
+        {item.user_note && (
+          <p className="entry-note" title={item.user_note} dir="auto">
+            <span>Your note · </span>
+            {item.user_note}
+          </p>
+        )}
+        {item.tags.length > 0 && (
+          <div className="entry-tags">
+            {item.tags.slice(0, 3).map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                className={`tag-pill compact tag-tone-${tagTone(tag)}`}
+                disabled={!ready}
+                onClick={() => onTag?.(tag)}
+              >
+                {tagLabel(tag)}
+              </button>
+            ))}
+            {item.tags.length > 3 && (
+              <button
+                className="tag-overflow"
+                disabled={!ready}
+                onClick={() => setEditing(true)}
+                aria-label={`View all ${item.tags.length} tags for ${title}`}
+              >
+                +{item.tags.length - 3}
+              </button>
+            )}
+          </div>
+        )}
+        {status &&
+          (needsDescription ? (
+            <button
+              className="entry-status status-action"
+              disabled={!ready}
+              onClick={() => setEditing(true)}
+            >
+              Add a note
+            </button>
+          ) : (
+            <span
+              className="entry-status"
+              role="status"
+              title={item.indexing_note || undefined}
+            >
+              {status}
+            </span>
+          ))}
+        {retry && onAnalyze && (
           <button
-            className="icon-button"
-            aria-label={`Edit ${title}`}
-            disabled={analyzing}
-            onClick={() => setEditing(true)}
+            className="analyze-button"
+            disabled={analyzing || !ready}
+            onClick={() => onAnalyze(item.id)}
           >
-            <Pencil size={15} aria-hidden="true" />
+            {analyzing ? (
+              <LoaderCircle
+                className="spinner"
+                size={14}
+                aria-label="Analyzing"
+              />
+            ) : (
+              "Analyze"
+            )}
           </button>
+        )}
+      </div>
+      <div className="card-footer">
+        <div className="card-actions">
+          <Menu.Root>
+            <Menu.Trigger
+              className="icon-button"
+              aria-label={`Actions for ${title}`}
+              disabled={!ready}
+            >
+              <MoreHorizontal size={19} />
+            </Menu.Trigger>
+            <Menu.Portal>
+              <Menu.Positioner
+                sideOffset={6}
+                align="end"
+                className="menu-positioner"
+              >
+                <Menu.Popup className="menu-popup">
+                  <Menu.Item
+                    className="menu-item"
+                    disabled={analyzing || !ready}
+                    onClick={() => setEditing(true)}
+                  >
+                    <Pencil size={15} />
+                    Edit link
+                  </Menu.Item>
+                  <Menu.Item
+                    className="menu-item destructive"
+                    onClick={() => setOpen(true)}
+                  >
+                    <Trash2 size={15} />
+                    Delete link
+                  </Menu.Item>
+                </Menu.Popup>
+              </Menu.Positioner>
+            </Menu.Portal>
+          </Menu.Root>
           <Dialog.Root
             open={open}
             onOpenChange={(value) => {
@@ -138,12 +208,6 @@ export function SavedLink({
               }
             }}
           >
-            <Dialog.Trigger
-              className="icon-button delete-trigger"
-              aria-label={`Delete ${title}`}
-            >
-              <Trash2 size={16} aria-hidden="true" />
-            </Dialog.Trigger>
             <Dialog.Portal>
               <Dialog.Backdrop className="dialog-backdrop" />
               <Dialog.Viewport className="dialog-viewport">
