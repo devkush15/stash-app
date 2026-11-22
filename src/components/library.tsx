@@ -1,24 +1,26 @@
 "use client";
-import { useEffect, useRef, useState, useTransition } from "react";
-import Link from "next/link";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Popover } from "@base-ui/react/popover";
+import { Dialog } from "@base-ui/react/dialog";
 import {
-  Bookmark,
-  ChevronLeft,
-  ChevronRight,
-  LoaderCircle,
   Search,
   SlidersHorizontal,
   X,
+  Sparkles,
+  ArrowUp,
+  Grid2X2,
+  List,
+  Rows3,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { WorkspaceShell } from "./workspace-shell";
 import { SavedLink } from "./saved-link";
 import { LinkDialog } from "./link-dialog";
 import { TagManager } from "./tag-manager";
-import { tagLabel, tagTone } from "./tag-picker";
-import { libraryHref, PAGE_SIZE, sources } from "@/lib/links";
-import { groupLibrary } from "@/lib/library-view";
-import { useClientReady } from "@/lib/use-client-ready";
+import { usePreference } from "./display-preferences";
+import { tagLabel } from "./tag-picker";
+import { sources, PAGE_SIZE } from "@/lib/links";
+import { filterLibrary, groupLibrary } from "@/lib/library-view";
 import { api } from "@/lib/client-api";
 import type { Platform, SavedItem } from "@/lib/database.types";
 export type LibraryProps = {
@@ -38,413 +40,588 @@ export type LibraryProps = {
   categories?: string[];
   customTags?: string[];
 };
-export function Library({
-  items,
-  email,
-  total,
-  q,
-  platform,
-  page,
-  error,
-  tags = [],
-  tag = "",
-  selectedTags = tag ? [tag] : [],
-  sort = "newest",
-  view = "tags",
-  category = "",
-  categories = [],
-  customTags = [],
-}: LibraryProps) {
-  const ready = useClientReady();
-  const router = useRouter(),
-    searchRef = useRef<HTMLInputElement>(null);
+export function Library(props: LibraryProps) {
+  const router = useRouter();
+  const [records, setRecords] = useState(props.items);
+  const [catalog, setCatalog] = useState(props.tags || []);
+  const [custom, setCustom] = useState(props.customTags || []);
+  const [query, setQuery] = useState(props.q);
+  const [source, setSource] = useState<string>(props.platform);
+  const [tags, setTags] = useState(props.selectedTags || []);
+  const [category, setCategory] = useState(props.category || "");
+  const [sort, setSort] = useState(props.sort || "newest");
+  const [group, setGroup] = useState(props.view || "tags");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [page, setPage] = useState(props.page);
+  const [layout, setLayout] = usePreference("stash-library-layout", "grid");
   const [open, setOpen] = useState(false),
-    [filters, setFilters] = useState(
-      Boolean(selectedTags.length || platform !== "all" || category),
-    ),
-    [managing, setManaging] = useState(false),
-    [notice, setNotice] = useState(""),
-    [analyzing, setAnalyzing] = useState<string[]>([]),
-    [pending, start] = useTransition();
-  const options = { sort, view, category };
-  const href = (
-    query = q,
-    source = platform,
-    values = selectedTags,
-    number = 1,
-    changes: Partial<typeof options> = {},
-  ) => libraryHref(query, source, number, values, { ...options, ...changes });
-  const catalog = [
-    ...new Set([...tags, ...items.flatMap((item) => item.tags)]),
-  ].sort((a, b) => a.localeCompare(b));
-  const groups = groupLibrary(items, view);
-  const activeFilters =
-    selectedTags.length + (platform !== "all" ? 1 : 0) + (category ? 1 : 0);
+    [manage, setManage] = useState(false),
+    [filters, setFilters] = useState(false);
+  const [notice, setNotice] = useState(""),
+    [error, setError] = useState(
+      props.error ? "Couldn’t load your links." : "",
+    );
+  const [selected, setSelected] = useState<string[]>([]),
+    [analyzing, setAnalyzing] = useState<string[]>([]);
+  const [batchOpen, setBatchOpen] = useState(false),
+    [batchTag, setBatchTag] = useState(""),
+    [busy, setBusy] = useState(false);
+  const [undo, setUndo] = useState<SavedItem[]>([]);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDelete = useRef<SavedItem[]>([]);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [askQuery, setAskQuery] = useState("");
+  const load = useCallback(async () => {
+    try {
+      const result = await api<{ items: SavedItem[] }>("/api/items");
+      setRecords(result.items);
+      setError("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t load your links.");
+    }
+  }, []);
   useEffect(() => {
-    const key = (event: KeyboardEvent) => {
+    // Layout fixtures are isolated from account APIs.
+    if (window.location.pathname.startsWith("/dev-qa")) return;
+    let cancelled = false;
+    void api<{ items: SavedItem[] }>("/api/items")
+      .then((result) => {
+        if (!cancelled) {
+          setRecords(result.items);
+          setError("");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setError("Couldn’t refresh your library.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.items]);
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         searchRef.current?.focus();
       }
     };
-    document.addEventListener("keydown", key);
-    return () => document.removeEventListener("keydown", key);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, []);
+  useEffect(() => {
+    const flush = () => {
+      for (const item of pendingDelete.current)
+        void fetch(`/api/items/${item.id}`, {
+          method: "DELETE",
+          keepalive: true,
+        });
+      pendingDelete.current = [];
+    };
+    window.addEventListener("pagehide", flush);
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+      flush();
+      window.removeEventListener("pagehide", flush);
+    };
+  }, []);
+  const counts = Object.fromEntries(
+    custom.map((tag) => [
+      tag,
+      records.filter(
+        (item) =>
+          item.tags.includes(tag) &&
+          !undo.some((deleted) => deleted.id === item.id),
+      ).length,
+    ]),
+  );
+  const topics = [...custom]
+    .sort((a, b) => counts[b] - counts[a] || a.localeCompare(b))
+    .slice(0, 3);
+  const allTags = [
+    ...new Set([
+      ...catalog,
+      ...custom,
+      ...records.flatMap((item) => item.tags),
+    ]),
+  ].sort();
+  const filtered = filterLibrary(records, {
+    q: query,
+    tags,
+    platform: source,
+    category,
+    sort,
+  }).filter(
+    (item) =>
+      !undo.some((deleted) => deleted.id === item.id) &&
+      (!dateFrom || item.created_at.slice(0, 10) >= dateFrom) &&
+      (!dateTo || item.created_at.slice(0, 10) <= dateTo),
+  );
+  const total = windowSafeFixtureTotal(props, records, filtered);
+  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const currentPage = Math.min(page, lastPage);
+  const shown = filtered.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+  const groups = groupLibrary(shown, group);
+  const reset = () => {
+    setTags([]);
+    setSource("all");
+    setCategory("");
+    setDateFrom("");
+    setDateTo("");
+    setQuery("");
+    setPage(1);
+  };
+  const ask = (value: string, ids: string[] = []) => {
+    const params = new URLSearchParams({ q: value });
+    if (ids.length) params.set("items", ids.join(","));
+    router.push(`/ask?${params}`);
+  };
   async function analyze(id: string) {
-    setAnalyzing((values) => [...values, id]);
+    setAnalyzing((v) => [...v, id]);
     try {
       await api(`/api/items/${id}/index`, { method: "POST" });
-      router.refresh();
+      await load();
     } catch (e) {
-      setNotice(
-        e instanceof Error
-          ? e.message
-          : "Your link is saved. Analysis is unavailable.",
-      );
+      setNotice(e instanceof Error ? e.message : "Organization unavailable.");
     } finally {
-      setAnalyzing((values) => values.filter((value) => value !== id));
+      setAnalyzing((v) => v.filter((x) => x !== id));
     }
   }
-  const refresh = (message: string) => {
-    setNotice(message);
-    router.refresh();
-  };
+  async function commitDelete(items: SavedItem[]) {
+    const result = await Promise.allSettled(
+      items.map((item) => api(`/api/items/${item.id}`, { method: "DELETE" })),
+    );
+    const failed = items.filter((_, i) => result[i].status === "rejected");
+    setRecords((values) =>
+      values.filter(
+        (item) =>
+          !items.some((deleted) => deleted.id === item.id) ||
+          failed.some((f) => f.id === item.id),
+      ),
+    );
+    pendingDelete.current = [];
+    setUndo([]);
+    if (failed.length)
+      setError(`Couldn’t delete ${failed.length} link(s). Please try again.`);
+    await load();
+  }
+  function remove(items: SavedItem[]) {
+    if (pendingDelete.current.length || busy) return;
+    pendingDelete.current = items;
+    setUndo(items);
+    setSelected([]);
+    timer.current = setTimeout(() => {
+      setBusy(true);
+      void commitDelete(items).finally(() => setBusy(false));
+    }, 6000);
+  }
+  async function applyTag() {
+    const tag = batchTag.trim().toLowerCase();
+    if (!tag) return;
+    const targets = records.filter((item) => selected.includes(item.id));
+    if (
+      targets.some((item) => !item.tags.includes(tag) && item.tags.length >= 8)
+    ) {
+      setError("One selected link already has 8 tags. Edit it first.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await api("/api/tags", { method: "POST", body: JSON.stringify({ tag }) });
+      const result = await Promise.allSettled(
+        targets.map((item) =>
+          api(`/api/items/${item.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              title: item.title || "",
+              note: item.user_note || "",
+              tags: [...new Set([...item.tags, tag])],
+            }),
+          }),
+        ),
+      );
+      const failures = result.filter((r) => r.status === "rejected").length;
+      setCustom((v) => [...new Set([...v, tag])]);
+      setBatchOpen(false);
+      setBatchTag("");
+      if (failures)
+        setError(
+          `${failures} link(s) could not be updated. Their selection is retained.`,
+        );
+      else {
+        setSelected([]);
+        setNotice("Tag added.");
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn’t add tag.");
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <WorkspaceShell
       active="library"
-      email={email}
+      email={props.email}
       onAdd={() => setOpen(true)}
-      source={platform}
-      sourceHref={(value) => href(q, value)}
-      customTags={customTags}
-      selectedTags={selectedTags}
-      tagHref={(value) =>
-        href("", platform, [value], 1, { category: "", view: "all" })
-      }
-      onManageTags={() => setManaging(true)}
+      customTags={custom}
+      tagCounts={counts}
+      selectedTags={tags}
+      onManageTags={() => setManage(true)}
     >
       <div className="page-heading">
         <h1>Library</h1>
-        <span className="item-count">
-          {total.toLocaleString()} {total === 1 ? "link" : "links"}
+        <span className="item-count" role="status">
+          {total} {total === 1 ? "link" : "links"}
         </span>
-        <label className="mobile-tag-browse">
-          <span className="sr-only">Browse by tag</span>
-          <select
-            aria-label="Browse by tag"
-            disabled={!ready || pending}
-            value={
-              selectedTags.length === 1 && customTags.includes(selectedTags[0])
-                ? `tag:${selectedTags[0]}`
-                : ""
-            }
-            onChange={(event) => {
-              const value = event.target.value;
-              if (value === "manage") setManaging(true);
-              else
-                start(() =>
-                  router.push(
-                    value
-                      ? href("", platform, [value.slice(4)], 1, {
-                          category: "",
-                          view: "all",
-                        })
-                      : "/library",
-                  ),
-                );
-            }}
-          >
-            <option value="">All links</option>
-            {customTags.map((value) => (
-              <option key={value} value={`tag:${value}`}>
-                {tagLabel(value)}
-              </option>
-            ))}
-            <option value="manage">Manage tags…</option>
-          </select>
-        </label>
       </div>
       <form
-        role="search"
-        className="library-search"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const value = String(new FormData(event.currentTarget).get("q") || "")
-            .trim()
-            .slice(0, 200);
-          start(() => router.push(href(value)));
+        className="library-ask-bar"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (askQuery.trim()) ask(askQuery.trim());
         }}
       >
-        <Search size={20} aria-hidden="true" />
+        <Sparkles size={18} />
         <input
-          ref={searchRef}
-          key={q}
-          name="q"
-          type="search"
-          defaultValue={q}
-          placeholder="Search titles, notes, or tags…"
-          aria-label="Search your saves"
-          disabled={!ready}
-          maxLength={200}
-          autoComplete="off"
-          enterKeyHint="search"
+          aria-label="Ask your stash"
+          placeholder="Ask your stash anything…"
+          value={askQuery}
+          onChange={(e) => setAskQuery(e.target.value)}
+          maxLength={500}
         />
-        {q && (
-          <Link
-            href={href("")}
-            className="icon-button"
-            aria-label="Clear search"
-          >
-            <X size={17} />
-          </Link>
-        )}
-        <button className="icon-button" aria-label="Search" disabled={!ready}>
-          {pending ? (
-            <LoaderCircle className="spinner" size={18} />
-          ) : (
-            <ChevronRight size={19} />
-          )}
+        <button
+          className="icon-button"
+          aria-label="Ask Stash"
+          disabled={!askQuery.trim()}
+        >
+          <ArrowUp size={18} />
         </button>
       </form>
-      <div className="library-toolbar">
-        <button
-          className={`button button-secondary filter-toggle ${activeFilters ? "has-filters" : ""}`}
-          aria-expanded={filters}
-          aria-controls="library-filters"
-          disabled={!ready}
-          onClick={() => setFilters(!filters)}
+      {!!topics.length && (
+        <div className="prompt-chips">
+          {topics.map((tag) => (
+            <button key={tag} onClick={() => ask(`What ${tag} did I save?`)}>
+              What {tag} did I save?
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="library-controls">
+        <form
+          role="search"
+          className="library-search"
+          onSubmit={(e) => e.preventDefault()}
         >
-          <SlidersHorizontal size={16} />
-          Filters
-          {activeFilters > 0 && (
-            <span className="filter-count">{activeFilters}</span>
-          )}
-        </button>
+          <Search size={18} />
+          <input
+            ref={searchRef}
+            type="search"
+            aria-label="Search your saves"
+            placeholder="Search titles, notes, or tags…"
+            value={query}
+            maxLength={200}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(1);
+            }}
+          />
+          <kbd title="Command K or Control K">⌘K / Ctrl K</kbd>
+          <button className="sr-only" aria-label="Search">
+            Search
+          </button>
+        </form>
+        <Popover.Root open={filters} onOpenChange={setFilters}>
+          <Popover.Trigger className="button button-secondary">
+            <SlidersHorizontal size={16} />
+            Filters
+          </Popover.Trigger>
+          <Popover.Portal>
+            <Popover.Positioner
+              sideOffset={8}
+              align="end"
+              className="filter-positioner"
+            >
+              <Popover.Popup className="filter-panel">
+                <Popover.Title className="filter-title">Filters</Popover.Title>
+                <Popover.Close
+                  className="icon-button filter-close"
+                  aria-label="Close filters"
+                >
+                  <X size={16} />
+                </Popover.Close>
+                <div className="filter-selects">
+                  <label>
+                    Source
+                    <select
+                      aria-label="Source"
+                      value={source}
+                      onChange={(e) => {
+                        setSource(e.target.value);
+                        setPage(1);
+                      }}
+                    >
+                      {sources.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.value === "all" ? "All sources" : s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Category
+                    <select
+                      aria-label="Category"
+                      value={category}
+                      onChange={(e) => {
+                        setCategory(e.target.value);
+                        setPage(1);
+                      }}
+                    >
+                      <option value="">All categories</option>
+                      {[
+                        ...new Set([
+                          ...records.map((i) => i.category).filter(Boolean),
+                          "Uncategorized",
+                        ]),
+                      ].map((c) => (
+                        <option key={c} value={c!}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Saved after
+                    <input
+                      className="input"
+                      type="date"
+                      aria-label="Saved after"
+                      value={dateFrom}
+                      max={dateTo || undefined}
+                      onChange={(e) => {
+                        setDateFrom(e.target.value);
+                        setPage(1);
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Saved before
+                    <input
+                      className="input"
+                      type="date"
+                      aria-label="Saved before"
+                      value={dateTo}
+                      min={dateFrom || undefined}
+                      onChange={(e) => {
+                        setDateTo(e.target.value);
+                        setPage(1);
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Group by
+                    <select
+                      aria-label="View"
+                      value={group}
+                      onChange={(e) => setGroup(e.target.value)}
+                    >
+                      <option value="all">Ungrouped</option>
+                      <option value="tags">Group by tag</option>
+                      <option value="categories">Group by category</option>
+                    </select>
+                  </label>
+                </div>
+                <fieldset className="filter-tags">
+                  <legend>Tags · match any</legend>
+                  {allTags.map((tag) => (
+                    <label key={tag}>
+                      <input
+                        type="checkbox"
+                        checked={tags.includes(tag)}
+                        onChange={(e) => {
+                          setTags((v) =>
+                            e.target.checked
+                              ? [...v, tag]
+                              : v.filter((t) => t !== tag),
+                          );
+                          setPage(1);
+                        }}
+                      />
+                      {tagLabel(tag)}
+                    </label>
+                  ))}
+                </fieldset>
+                <button
+                  className="text-button"
+                  onClick={() => {
+                    setFilters(false);
+                    setManage(true);
+                  }}
+                >
+                  Manage tags
+                </button>
+                <div className="filter-panel-actions">
+                  <button className="text-button" onClick={reset}>
+                    Clear filters
+                  </button>
+                  <button
+                    className="button button-primary"
+                    onClick={() => setFilters(false)}
+                  >
+                    Apply filters
+                  </button>
+                </div>
+              </Popover.Popup>
+            </Popover.Positioner>
+          </Popover.Portal>
+        </Popover.Root>
         <label className="sort-control">
-          Sort by
+          <span className="sr-only">Sort by</span>
           <select
             aria-label="Sort by"
-            disabled={!ready || pending}
             value={sort}
-            onChange={(event) =>
-              start(() =>
-                router.push(
-                  href(q, platform, selectedTags, 1, {
-                    sort: event.target.value,
-                  }),
-                ),
-              )
-            }
+            onChange={(e) => setSort(e.target.value)}
           >
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
             <option value="title">Title A–Z</option>
           </select>
         </label>
+        <div className="view-switch" role="group" aria-label="Display mode">
+          {(
+            [
+              ["grid", Grid2X2],
+              ["list", List],
+              ["compact", Rows3],
+            ] as const
+          ).map(([name, Icon]) => (
+            <button
+              key={name}
+              className="icon-button"
+              aria-label={`${name[0].toUpperCase() + name.slice(1)} view`}
+              title={`${name} view`}
+              aria-pressed={layout === name}
+              onClick={() => setLayout(name)}
+            >
+              <Icon size={17} />
+            </button>
+          ))}
+        </div>
       </div>
-      {filters && (
-        <form
-          id="library-filters"
-          className="filter-panel"
-          key={JSON.stringify([
-            selectedTags,
-            platform,
-            category,
-            view,
-            catalog,
-          ])}
-          onSubmit={(event) => {
-            event.preventDefault();
-            const data = new FormData(event.currentTarget);
-            if (data.getAll("tag").length > 8) {
-              setNotice("Choose up to 8 tags for a filter.");
-              return;
-            }
-            start(() =>
-              router.push(
-                libraryHref(
-                  q,
-                  String(data.get("source")),
-                  1,
-                  data.getAll("tag").map(String),
-                  {
-                    sort,
-                    view: String(data.get("view")),
-                    category: String(data.get("category")),
-                  },
-                ),
-              ),
-            );
-          }}
-        >
-          <div className="filter-selects">
-            <label className="mobile-source-filter">
-              Source
-              <select
-                name="source"
-                aria-label="Source"
-                disabled={!ready || pending}
-                defaultValue={platform}
-              >
-                {sources.map((source) => (
-                  <option key={source.value} value={source.value}>
-                    {source.value === "all" ? "All sources" : source.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Category
-              <select
-                name="category"
-                aria-label="Category"
-                disabled={!ready || pending}
-                defaultValue={category}
-              >
-                <option value="">All categories</option>
-                {[...new Set([...categories, "Uncategorized"])].map((value) => (
-                  <option key={value}>{value}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              View
-              <select
-                name="view"
-                aria-label="View"
-                disabled={!ready || pending}
-                defaultValue={view}
-              >
-                <option value="all">Ungrouped</option>
-                <option value="categories">Group by category</option>
-                <option value="tags">Group by tag</option>
-              </select>
-            </label>
-          </div>
-          <div className="filter-tags-heading">
-            <span>
-              Tags <small>Match any · up to 8 tags</small>
-            </span>
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => setManaging(true)}
-            >
-              Manage tags
-            </button>
-          </div>
-          <div className="filter-tags">
-            {catalog.map((value) => (
-              <label
-                className={`tag-filter tag-tone-${tagTone(value)}`}
-                key={value}
-              >
-                <input
-                  type="checkbox"
-                  disabled={!ready || pending}
-                  name="tag"
-                  value={value}
-                  defaultChecked={selectedTags.includes(value)}
-                />
-                <span className="tag-dot" />
-                {tagLabel(value)}
-              </label>
-            ))}
-            {!catalog.length && (
-              <span className="muted">
-                No tags yet. Add one when saving a link.
-              </span>
-            )}
-          </div>
-          <div className="filter-panel-actions">
-            <Link
-              className="text-button"
-              href={libraryHref(q, "all", 1, [], { sort })}
-            >
-              Clear filters
-            </Link>
-            <button className="button button-primary" disabled={pending}>
-              Apply filters
-            </button>
-          </div>
-        </form>
-      )}
-      {(activeFilters > 0 || q) && (
+      {(query ||
+        tags.length > 0 ||
+        source !== "all" ||
+        category ||
+        dateFrom ||
+        dateTo) && (
         <div className="active-filters">
-          {q && <span>Results for “{q}”</span>}
-          {selectedTags.map((value) => (
+          {[
+            ...(query
+              ? [{ label: `Search: ${query}`, clear: () => setQuery("") }]
+              : []),
+            ...tags.map((tag) => ({
+              label: tagLabel(tag),
+              clear: () => setTags((v) => v.filter((t) => t !== tag)),
+            })),
+            ...(source !== "all"
+              ? [
+                  {
+                    label:
+                      sources.find((s) => s.value === source)?.label || source,
+                    clear: () => setSource("all"),
+                  },
+                ]
+              : []),
+            ...(category
+              ? [{ label: category, clear: () => setCategory("") }]
+              : []),
+            ...(dateFrom
+              ? [{ label: `After ${dateFrom}`, clear: () => setDateFrom("") }]
+              : []),
+            ...(dateTo
+              ? [{ label: `Before ${dateTo}`, clear: () => setDateTo("") }]
+              : []),
+          ].map(({ label, clear }) => (
             <button
-              key={value}
-              className={`tag-pill compact tag-tone-${tagTone(value)}`}
-              onClick={() =>
-                start(() =>
-                  router.push(
-                    href(
-                      q,
-                      platform,
-                      selectedTags.filter((t) => t !== value),
-                    ),
-                  ),
-                )
-              }
+              className="filter-chip"
+              key={label}
+              onClick={clear}
+              aria-label={`Remove ${label} filter`}
             >
-              {tagLabel(value)}
+              {label}
               <X size={12} />
             </button>
           ))}
-          {category && <span>{category}</span>}
-          {platform !== "all" && (
-            <span>
-              {sources.find((source) => source.value === platform)?.label}
-            </span>
-          )}
+          <button className="text-button" onClick={reset}>
+            Clear all
+          </button>
         </div>
       )}
-      {notice && (
-        <div className="inline-notice" role="status">
-          {notice}
+      {(notice || error) && (
+        <div
+          className={error ? "inline-error" : "inline-notice"}
+          role={error ? "alert" : "status"}
+        >
+          {error || notice}
           <button
             className="icon-button"
             aria-label="Dismiss notification"
-            onClick={() => setNotice("")}
+            onClick={() => {
+              setError("");
+              setNotice("");
+            }}
           >
             <X size={16} />
           </button>
         </div>
       )}
-      <div className="library-results" aria-busy={pending}>
-        {error ? (
-          <div className="empty-state">
-            <h2>Couldn’t load your links.</h2>
-            <button
-              className="button button-secondary"
-              onClick={() => router.refresh()}
-            >
-              Try again
-            </button>
-          </div>
-        ) : items.length ? (
-          groups.map(([name, links]) => (
+      <div
+        className={`library-results layout-${["grid", "list", "compact"].includes(layout) ? layout : "grid"}`}
+      >
+        {shown.length ? (
+          groups.map(([name, items]) => (
             <section className="link-section" key={name}>
-              {view !== "all" && (
-                <div className={`section-heading tag-tone-${tagTone(name)}`}>
-                  <h2>{tagLabel(name)}</h2>
-                  <span>{links.length}</span>
+              {group !== "all" && (
+                <div className="section-heading">
+                  <h2>
+                    {name === "Uncategorized"
+                      ? name
+                      : name.charAt(0).toUpperCase() + name.slice(1)}
+                  </h2>
+                  <span>{items.length}</span>
                 </div>
               )}
               <div className="link-list">
-                {links.map((item) => (
+                {items.map((item) => (
                   <SavedLink
                     key={item.id}
                     item={item}
+                    selected={selected.includes(item.id)}
+                    onSelect={() =>
+                      setSelected((v) =>
+                        v.includes(item.id)
+                          ? v.filter((id) => id !== item.id)
+                          : [...v, item.id],
+                      )
+                    }
+                    onRequestDelete={() => remove([item])}
+                    deleting={!!undo.length || busy}
+                    tagOptions={allTags}
                     analyzing={analyzing.includes(item.id)}
                     onAnalyze={analyze}
-                    tagOptions={catalog}
                     onEdited={(updated, reanalyze) => {
-                      refresh("Link updated.");
+                      setRecords((v) =>
+                        v.map((i) => (i.id === updated.id ? updated : i)),
+                      );
+                      setCustom((v) => [...new Set([...v, ...updated.tags])]);
                       if (reanalyze) void analyze(updated.id);
                     }}
-                    onDeleted={() => refresh("Link deleted.")}
+                    onDeleted={() => void load()}
                   />
                 ))}
               </div>
@@ -452,95 +629,193 @@ export function Library({
           ))
         ) : (
           <div className="empty-state">
-            <span className="empty-icon">
-              <Bookmark size={25} />
-            </span>
             <h2>
-              {q || activeFilters
-                ? "No matching links."
-                : "Save your first link."}
+              {records.length ? "No matching links." : "Save your first link."}
             </h2>
-            <p>
-              {q || activeFilters
-                ? "Try fewer filters or a different search."
-                : "Keep a good find. Add context whenever you need it."}
-            </p>
-            {q || activeFilters ? (
-              <Link className="button button-secondary" href="/library">
-                Show all links
-              </Link>
-            ) : (
-              <button
-                className="button button-primary"
-                disabled={!ready}
-                onClick={() => setOpen(true)}
-              >
-                Add a link
-              </button>
-            )}
+            <button
+              className="button button-secondary"
+              onClick={records.length ? reset : () => setOpen(true)}
+            >
+              {records.length ? "Clear filters" : "Add a link"}
+            </button>
           </div>
         )}
       </div>
-      {!error && (page > 1 || total > PAGE_SIZE) && (
+      {total > PAGE_SIZE && (
         <nav className="pagination" aria-label="Library pages">
-          {page > 1 ? (
-            <Link
-              className="button button-secondary"
-              href={href(q, platform, selectedTags, page - 1)}
-            >
-              <ChevronLeft size={16} />
-              Previous
-            </Link>
-          ) : (
-            <span />
-          )}
+          <button
+            className="button button-secondary"
+            disabled={currentPage === 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            Previous
+          </button>
           <span>
-            Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}
+            Page {currentPage} of {lastPage}
           </span>
-          {page * PAGE_SIZE < total ? (
-            <Link
-              className="button button-secondary"
-              href={href(q, platform, selectedTags, page + 1)}
-            >
-              Next
-              <ChevronRight size={16} />
-            </Link>
-          ) : (
-            <span />
-          )}
+          <button
+            className="button button-secondary"
+            disabled={currentPage === lastPage}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+          </button>
         </nav>
       )}
+      {!!selected.length && (
+        <div
+          className="selection-bar"
+          role="region"
+          aria-label="Selected link actions"
+        >
+          <button
+            className="button button-primary"
+            onClick={() => ask("Summarize the selected saved links.", selected)}
+          >
+            Ask Stash about these ({selected.length})
+          </button>
+          <button
+            className="button button-secondary"
+            onClick={() => setBatchOpen(true)}
+          >
+            Add tag
+          </button>
+          <button
+            className="button button-secondary"
+            disabled={busy || !!undo.length}
+            onClick={() =>
+              remove(records.filter((i) => selected.includes(i.id)))
+            }
+          >
+            Delete
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Clear selection"
+            onClick={() => setSelected([])}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+      {!!undo.length && (
+        <div className="undo-toast" role="status">
+          {busy ? "Deleting…" : `${undo.length} link(s) removed`}
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => {
+              if (timer.current) clearTimeout(timer.current);
+              pendingDelete.current = [];
+              setUndo([]);
+            }}
+          >
+            Undo
+          </button>
+        </div>
+      )}
       <LinkDialog
-        key={selectedTags.join(",")}
         open={open}
         onOpenChange={setOpen}
-        tagOptions={catalog}
-        defaultTags={selectedTags}
+        tagOptions={allTags}
+        defaultTags={tags}
         onSaved={(item) => {
-          refresh("Link saved.");
+          setRecords((v) => [item, ...v.filter((i) => i.id !== item.id)]);
+          setCustom((v) => [...new Set([...v, ...item.tags])]);
+          setCatalog((v) => [...new Set([...v, ...item.tags])]);
+          reset();
+          setNotice("Link saved.");
           void analyze(item.id);
-          if (q || activeFilters || page > 1) router.push("/library");
         }}
       />
-      {managing && (
+      {manage && (
         <TagManager
-          open={managing}
-          onOpenChange={setManaging}
-          tags={catalog}
+          open={manage}
+          onOpenChange={setManage}
+          tags={allTags}
           onChanged={(change) => {
-            if (change && selectedTags.includes(change.from)) {
-              const next = selectedTags.flatMap((value) =>
-                value === change.from
-                  ? change.to
-                    ? [change.to]
-                    : []
-                  : [value],
+            if (change) {
+              setCustom((v) => [
+                ...new Set(
+                  v.flatMap((t) =>
+                    t === change.from ? (change.to ? [change.to] : []) : [t],
+                  ),
+                ),
+              ]);
+              setTags((v) =>
+                v.flatMap((t) =>
+                  t === change.from ? (change.to ? [change.to] : []) : [t],
+                ),
               );
-              router.replace(href(q, platform, [...new Set(next)]));
-            } else router.refresh();
+            }
+            void load();
+            router.refresh();
+          }}
+          onCatalog={(values) => {
+            setCatalog(values);
+            setCustom((v) => [
+              ...new Set([
+                ...v.filter((t) => values.includes(t)),
+                ...values.filter((t) => !catalog.includes(t)),
+              ]),
+            ]);
           }}
         />
       )}
+      <Dialog.Root open={batchOpen} onOpenChange={setBatchOpen}>
+        <Dialog.Portal>
+          <Dialog.Backdrop className="dialog-backdrop" />
+          <Dialog.Viewport className="dialog-viewport">
+            <Dialog.Popup className="dialog-popup">
+              <Dialog.Title>Add tag to {selected.length} links</Dialog.Title>
+              <Dialog.Description>
+                Existing tags and notes are preserved.
+              </Dialog.Description>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void applyTag();
+                }}
+              >
+                <input
+                  className="input"
+                  aria-label="Tag to add"
+                  value={batchTag}
+                  onChange={(e) => setBatchTag(e.target.value)}
+                  list="batch-tag-options"
+                  required
+                  maxLength={40}
+                />
+                <datalist id="batch-tag-options">
+                  {allTags.map((t) => (
+                    <option key={t} value={t} />
+                  ))}
+                </datalist>
+                <div className="dialog-actions">
+                  <Dialog.Close
+                    className="button button-secondary"
+                    disabled={busy}
+                  >
+                    Cancel
+                  </Dialog.Close>
+                  <button className="button button-primary" disabled={busy}>
+                    Add tag
+                  </button>
+                </div>
+              </form>
+            </Dialog.Popup>
+          </Dialog.Viewport>
+        </Dialog.Portal>
+      </Dialog.Root>
     </WorkspaceShell>
   );
+}
+function windowSafeFixtureTotal(
+  props: LibraryProps,
+  records: SavedItem[],
+  filtered: SavedItem[],
+) {
+  return records === props.items && props.total > records.length
+    ? props.total
+    : filtered.length;
 }

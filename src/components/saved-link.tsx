@@ -2,14 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { Menu } from "@base-ui/react/menu";
-import {
-  ExternalLink,
-  Pencil,
-  Trash2,
-  LoaderCircle,
-  MoreHorizontal,
-} from "lucide-react";
+import { ExternalLink, Pencil, Trash2, LoaderCircle, Tags } from "lucide-react";
 import { useClientReady } from "@/lib/use-client-ready";
 import { api } from "@/lib/client-api";
 import { SourceIcon } from "./source-icon";
@@ -24,8 +17,16 @@ export function SavedLink({
   onAnalyze,
   analyzing = false,
   tagOptions = [],
+  selected = false,
+  onSelect,
+  onRequestDelete,
+  deleting = false,
 }: {
   item: SavedItem;
+  selected?: boolean;
+  onSelect?: () => void;
+  onRequestDelete?: () => void;
+  deleting?: boolean;
   onDeleted: () => void;
   onEdited?: (item: SavedItem, reanalyze: boolean) => void;
   onAnalyze?: (id: string) => void;
@@ -65,7 +66,19 @@ export function SavedLink({
             ? "Organization unavailable · link saved"
             : "";
   return (
-    <article className="saved-link" data-testid="saved-link">
+    <article
+      className={`saved-link ${selected ? "is-selected" : ""}`}
+      data-testid="saved-link"
+    >
+      {onSelect && (
+        <input
+          className="card-select"
+          type="checkbox"
+          checked={selected}
+          onChange={onSelect}
+          aria-label={`Select ${title}`}
+        />
+      )}
       <div role="img" className="entry-logo" title={source} aria-label={source}>
         <SourceIcon platform={item.platform} />
       </div>
@@ -80,7 +93,6 @@ export function SavedLink({
           <h3 className="card-title" dir="auto" title={title}>
             {title}
           </h3>
-          <ExternalLink size={14} aria-hidden="true" />
         </a>
         {item.user_note && (
           <p className="entry-note" title={item.user_note} dir="auto">
@@ -128,40 +140,43 @@ export function SavedLink({
       </div>
       <div className="card-footer">
         <div className="card-actions">
-          <Menu.Root>
-            <Menu.Trigger
+          <div className="quick-actions">
+            <a
               className="icon-button"
-              aria-label={`Actions for ${title}`}
-              disabled={!ready}
+              href={target}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Open ${title}`}
             >
-              <MoreHorizontal size={19} />
-            </Menu.Trigger>
-            <Menu.Portal>
-              <Menu.Positioner
-                sideOffset={6}
-                align="end"
-                className="menu-positioner"
-              >
-                <Menu.Popup className="menu-popup">
-                  <Menu.Item
-                    className="menu-item"
-                    disabled={analyzing || !ready}
-                    onClick={() => setEditing(true)}
-                  >
-                    <Pencil size={15} />
-                    Edit link
-                  </Menu.Item>
-                  <Menu.Item
-                    className="menu-item destructive"
-                    onClick={() => setOpen(true)}
-                  >
-                    <Trash2 size={15} />
-                    Delete link
-                  </Menu.Item>
-                </Menu.Popup>
-              </Menu.Positioner>
-            </Menu.Portal>
-          </Menu.Root>
+              <ExternalLink size={15} />
+            </a>
+            <button
+              className="icon-button"
+              aria-label={`Edit tags for ${title}`}
+              disabled={!ready || analyzing}
+              onClick={() => setEditing(true)}
+            >
+              <Tags size={15} />
+            </button>
+            <button
+              className="icon-button"
+              aria-label={`Edit ${title}`}
+              disabled={!ready || analyzing}
+              onClick={() => setEditing(true)}
+            >
+              <Pencil size={15} />
+            </button>
+            <button
+              className="icon-button"
+              aria-label={`Delete ${title}`}
+              disabled={!ready || deleting}
+              onClick={() =>
+                onRequestDelete ? onRequestDelete() : setOpen(true)
+              }
+            >
+              <Trash2 size={15} />
+            </button>
+          </div>
           <Dialog.Root
             open={open}
             onOpenChange={(value) => {

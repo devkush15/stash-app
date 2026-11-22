@@ -35,6 +35,7 @@ export default async function LibraryPage({
   }
   return (
     <Library
+      key={JSON.stringify(params)}
       items={items.slice(
         (params.page - 1) * PAGE_SIZE,
         params.page * PAGE_SIZE,
