@@ -35,9 +35,14 @@ test("Instagram fallback, canonical duplicates, editing and description search",
   await expect(card).not.toContainText("igsh");
   await expect(card.getByRole("heading")).not.toContainText("instagram.com");
   await expect(card).toContainText("Public content unavailable");
-  expect(await card.getByRole("link").getAttribute("href")).toBe(
-    "https://www.instagram.com/reel/StashMissing2026/",
-  );
+  expect(
+    await card
+      .getByRole("link", {
+        name: "Open Instagram Reel (opens in a new tab)",
+        exact: true,
+      })
+      .getAttribute("href"),
+  ).toBe("https://www.instagram.com/reel/StashMissing2026/");
   const item = (await (await context.request.get("/api/items")).json())
     .items[0];
   const duplicate = await context.request.post("/api/items", {

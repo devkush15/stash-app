@@ -20,6 +20,14 @@ for (const width of [360, 768, 1280, 1920]) {
       await expect(
         page.getByRole("button", { name: "Add link", exact: true }),
       ).toBeVisible();
+      const askButton = page.getByRole("button", {
+        name: "Open Ask Stash",
+        exact: true,
+      });
+      await expect(askButton).toBeVisible();
+      const rect = await askButton.boundingBox();
+      expect(rect!.x + rect!.width).toBeLessThanOrEqual(width);
+      expect(rect!.y + rect!.height).toBeLessThanOrEqual(900);
       if (data === "empty")
         await expect(
           page.getByRole("heading", { name: "Save your first link." }),

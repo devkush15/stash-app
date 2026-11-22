@@ -45,7 +45,7 @@ test("register, save, persist, search, isolate, delete, logout and login", async
   const all = await a.request.get("/api/items");
   const saved = (await all.json()).items[0];
   await page.getByRole("searchbox").fill("Find the pasta recipe I saved.");
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.getByRole("searchbox").press("Enter");
   await expect(page.getByTestId("saved-link")).toHaveCount(1);
   await register(other, "bob_" + suffix);
   const privateAsk = await b.request.post("/api/ask", {
