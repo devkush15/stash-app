@@ -159,13 +159,13 @@ for (const width of [320, 1440]) {
       fullPage: true,
     });
     await page.keyboard.press("Escape");
-    await page
-      .getByRole("button", { name: "Account menu" })
-      .filter({ visible: true })
-      .click();
-    await page
-      .getByRole("menuitem", { name: "Switch to light mode", exact: true })
-      .click();
+    const themeToggle = page.getByRole("button", {
+      name: "Switch to light mode", exact: true,
+    });
+    const toggleBounds = await themeToggle.boundingBox();
+    const addBounds = await page.getByRole("button", { name: "Add link", exact: true }).boundingBox();
+    expect(toggleBounds!.x + toggleBounds!.width).toBeLessThanOrEqual(addBounds!.x);
+    await themeToggle.click();
     await expect(page.locator(".workspace-shell")).toHaveCSS(
       "background-color",
       "rgb(249, 248, 245)",

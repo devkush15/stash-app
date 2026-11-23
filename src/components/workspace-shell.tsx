@@ -4,6 +4,7 @@ import { Plus, LibraryBig, Sparkles, Tags } from "lucide-react";
 import { useClientReady } from "@/lib/use-client-ready";
 import { Brand } from "./brand";
 import { AccountMenu } from "./account-menu";
+import { ThemeToggle } from "./theme-toggle";
 import { useState } from "react";
 import { usePreference, tagColors } from "./display-preferences";
 import { SourceIcon } from "./source-icon";
@@ -150,6 +151,7 @@ export function WorkspaceShell({
             </Link>
           </nav>
           <div className="workspace-actions">
+            <ThemeToggle />
             <button
               className="button button-primary"
               disabled={!ready}
